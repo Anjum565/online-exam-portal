@@ -439,3 +439,61 @@ a:hover {
   }
 }
 
+/* Print optimization styles for institutional reports and marksheets */
+.print-only {
+  display: none;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10pt !important;
+  }
+
+  nav, .navbar, .no-print, button, .btn, .cold-start-banner, header {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .glass-card {
+    background: #ffffff !important;
+    border: 1px solid #cccccc !important;
+    box-shadow: none !important;
+    color: #000000 !important;
+    padding: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    color: #000000 !important;
+    background: #ffffff !important;
+  }
+
+  th, td {
+    border: 1px solid #333333 !important;
+    padding: 6px 8px !important;
+    color: #000000 !important;
+    font-size: 9pt !important;
+  }
+
+  th {
+    background: #f1f5f9 !important;
+    font-weight: 700 !important;
+    color: #000000 !important;
+  }
+
+  .badge {
+    border: 1px solid #666666 !important;
+    color: #000000 !important;
+    background: transparent !important;
+    padding: 2px 4px !important;
+  }
+}
+
+

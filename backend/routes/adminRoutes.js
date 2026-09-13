@@ -550,5 +550,143 @@ router.delete('/exams/:id', async (req, res) => {
   }
 });
 
+// @route   GET /api/admin/reports/department-results
+// @desc    Get departmental examination results with statistics for institutional reporting and printouts
+router.get('/reports/department-results', async (req, res) => {
+  try {
+    const { department, course, semester, subject, search } = req.query;
+    const Exam = require('../models/Exam');
+    const { enrichSubmissions } = require('./gradingRoutes');
+
+    let examQuery = {};
+    if (department && department !== 'ALL') {
+      examQuery.department = department;
+    }
+    if (course && course !== 'ALL') {
+      examQuery.course = course;
+    }
+    if (semester && semester !== 'ALL') {
+      examQuery.semester = semester;
+    }
+    if (subject && subject !== 'ALL') {
+      examQuery.subject = subject;
+    }
+
+    let matchingExams = [];
+    if (getIsConnected()) {
+      matchingExams = await Exam.find(examQuery).select('_id id title examCode subject department course semester totalMarks passingPercentage');
+    } else {
+      matchingExams = memoryDb.exams.filter(e => {
+        if (department && department !== 'ALL' && e.department !== department) return false;
+        if (course && course !== 'ALL' && e.course !== course) return false;
+        if (semester && semester !== 'ALL' && e.semester !== semester) return false;
+        if (subject && subject !== 'ALL' && e.subject !== subject) return false;
+        return true;
+      });
+    }
+
+    const examIds = matchingExams.map(e => e._id || e.id);
+    const examIdsStrings = examIds.map(id => String(id));
+
+    let rawSubmissions = [];
+    if (getIsConnected()) {
+      rawSubmissions = await Submission.find({
+        $or: [
+          { examId: { $in: examIds } },
+          { examId: { $in: examIdsStrings } }
+        ]
+      }).sort({ submittedAt: -1 });
+    } else {
+      rawSubmissions = memoryDb.submissions.filter(s => examIdsStrings.includes(String(s.examId)));
+    }
+
+    let enriched = await enrichSubmissions(rawSubmissions);
+
+    // Apply secondary filters on enriched results if needed
+    if (department && department !== 'ALL') {
+      enriched = enriched.filter(s => s.studentDepartment && s.studentDepartment.toLowerCase() === department.toLowerCase());
+    }
+    if (course && course !== 'ALL') {
+      enriched = enriched.filter(s => s.studentCourse && s.studentCourse.toLowerCase() === course.toLowerCase());
+    }
+    if (semester && semester !== 'ALL') {
+      enriched = enriched.filter(s => s.studentSemester && s.studentSemester.toLowerCase() === semester.toLowerCase());
+    }
+    if (subject && subject !== 'ALL') {
+      enriched = enriched.filter(s => s.subject && s.subject.toLowerCase() === subject.toLowerCase());
+    }
+
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      enriched = enriched.filter(s =>
+        (s.studentName && s.studentName.toLowerCase().includes(q)) ||
+        (s.studentRollNumber && s.studentRollNumber.toLowerCase().includes(q)) ||
+        (s.studentEmail && s.studentEmail.toLowerCase().includes(q)) ||
+        (s.examTitle && s.examTitle.toLowerCase().includes(q))
+      );
+    }
+
+    // Compute Departmental Institutional Analytics
+    const totalCandidates = enriched.length;
+    let totalPassed = 0;
+    let totalFailed = 0;
+    let totalTerminated = 0;
+    let sumPercentage = 0;
+
+    enriched.forEach(sub => {
+      const passing = sub.examPassingPercentage || 40;
+      const pct = sub.percentage !== undefined ? sub.percentage : (sub.examTotalMarks ? Math.round(((sub.marksObtained || 0) / sub.examTotalMarks) * 100) : 0);
+      sumPercentage += pct;
+
+      if (sub.status === 'terminated' || sub.isTerminated) {
+        totalTerminated++;
+        totalFailed++;
+      } else if (sub.passed || pct >= passing) {
+        totalPassed++;
+      } else {
+        totalFailed++;
+      }
+    });
+
+    const passPercentage = totalCandidates > 0 ? Math.round((totalPassed / totalCandidates) * 100) : 0;
+    const averageScore = totalCandidates > 0 ? Math.round((sumPercentage / totalCandidates) * 10) / 10 : 0;
+
+    // Collect available unique filter options across institutional records
+    let allExams = [];
+    if (getIsConnected()) {
+      allExams = await Exam.find().select('department course semester subject');
+    } else {
+      allExams = memoryDb.exams;
+    }
+
+    const availableDepartments = Array.from(new Set(allExams.map(e => e.department).filter(Boolean)));
+    const availableCourses = Array.from(new Set(allExams.map(e => e.course).filter(Boolean)));
+    const availableSemesters = Array.from(new Set(allExams.map(e => e.semester).filter(Boolean)));
+    const availableSubjects = Array.from(new Set(allExams.map(e => e.subject).filter(Boolean)));
+
+    return res.json({
+      results: enriched,
+      analytics: {
+        totalCandidates,
+        totalPassed,
+        totalFailed,
+        totalTerminated,
+        passPercentage,
+        averageScore
+      },
+      filterOptions: {
+        departments: availableDepartments,
+        courses: availableCourses,
+        semesters: availableSemesters,
+        subjects: availableSubjects
+      }
+    });
+  } catch (err) {
+    console.error('Error generating department report:', err);
+    res.status(500).json({ error: 'Failed to generate department results report.' });
+  }
+});
+
 module.exports = router;
+
 

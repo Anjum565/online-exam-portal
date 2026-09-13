@@ -5,7 +5,8 @@ import axios from 'axios';
 import {
   PlusCircle, BookOpen, Clock, Users, Edit3, CheckCircle,
   FileText, Send, Sparkles, Trash2, Key, Copy, Check,
-  Calendar, Settings, X, AlertCircle, RefreshCw, Award, Building, Shield
+  Calendar, Settings, X, AlertCircle, RefreshCw, Award, Building, Shield,
+  Table, Download, Printer, Filter, Search
 } from 'lucide-react';
 
 export default function TeacherDashboard() {
@@ -32,6 +33,16 @@ export default function TeacherDashboard() {
 
   const { user, API_BASE_URL } = useContext(AuthContext);
 
+  // Tab & Gradebook View States
+  const [activeTab, setActiveTab] = useState('exams'); // 'exams' | 'gradebook'
+  const [gradebookResults, setGradebookResults] = useState([]);
+  const [gradebookLoading, setGradebookLoading] = useState(false);
+  const [gradebookSemester, setGradebookSemester] = useState('ALL');
+  const [gradebookSubject, setGradebookSubject] = useState('ALL');
+  const [gradebookSearch, setGradebookSearch] = useState('');
+  const [availableSemesters, setAvailableSemesters] = useState([]);
+  const [availableSubjects, setAvailableSubjects] = useState([]);
+
   const fetchExams = async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/exams`);
@@ -48,9 +59,77 @@ export default function TeacherDashboard() {
     }
   };
 
+  const fetchTeacherGradebook = async () => {
+    setGradebookLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (gradebookSemester && gradebookSemester !== 'ALL') params.append('semester', gradebookSemester);
+      if (gradebookSubject && gradebookSubject !== 'ALL') params.append('subject', gradebookSubject);
+      if (gradebookSearch && gradebookSearch.trim()) params.append('search', gradebookSearch.trim());
+
+      const res = await axios.get(`${API_BASE_URL}/grading/teacher-results?${params.toString()}`);
+      setGradebookResults(res.data.results || []);
+      if (res.data.availableSemesters) setAvailableSemesters(res.data.availableSemesters);
+      if (res.data.availableSubjects) setAvailableSubjects(res.data.availableSubjects);
+    } catch (err) {
+      console.error('Failed to load teacher gradebook:', err);
+    } finally {
+      setGradebookLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchExams();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'gradebook') {
+      fetchTeacherGradebook();
+    }
+  }, [activeTab, gradebookSemester, gradebookSubject]);
+
+  const handleExportGradebookCSV = () => {
+    if (!gradebookResults || gradebookResults.length === 0) {
+      return alert('No student results available to export.');
+    }
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Roll Number,Student Name,Email,Department,Course,Semester,Subject,Exam Title,Exam Code,Score,Total Marks,Percentage (%),Result Status,Violations (Tab Switches),Submission Status,Evaluation Date,Feedback\n";
+
+    gradebookResults.forEach(sub => {
+      const roll = (sub.studentRollNumber || 'N/A').replace(/"/g, '""');
+      const name = (sub.studentName || 'N/A').replace(/"/g, '""');
+      const email = (sub.studentEmail || 'N/A').replace(/"/g, '""');
+      const dept = (sub.studentDepartment || user?.department || 'N/A').replace(/"/g, '""');
+      const course = (sub.studentCourse || 'N/A').replace(/"/g, '""');
+      const sem = (sub.studentSemester || 'N/A').replace(/"/g, '""');
+      const subj = (sub.subject || 'N/A').replace(/"/g, '""');
+      const title = (sub.examTitle || '').replace(/"/g, '""');
+      const code = (sub.examCode || 'N/A').replace(/"/g, '""');
+
+      const marks = sub.marksObtained !== null && sub.marksObtained !== undefined ? sub.marksObtained : 0;
+      const total = sub.examTotalMarks || sub.totalMarks || 10;
+      const pct = sub.percentage !== undefined ? sub.percentage : (total > 0 ? Math.round((marks / total) * 100) : 0);
+      const passing = sub.examPassingPercentage || 40;
+      const resultStatus = sub.isTerminated || sub.status === 'terminated' ? 'Disqualified' : (pct >= passing ? 'Passed' : 'Failed');
+      const tabSwitches = sub.tabSwitchCount || 0;
+      const status = sub.status || 'submitted';
+      const evalDate = sub.submittedAt ? new Date(sub.submittedAt).toLocaleDateString() : 'N/A';
+      const cleanFeedback = (sub.feedback || '').replace(/"/g, '""');
+
+      csvContent += `"${roll}","${name}","${email}","${dept}","${course}","${sem}","${subj}","${title}","${code}",${marks},${total},${pct}%,${resultStatus},${tabSwitches},${status},"${evalDate}","${cleanFeedback}"\n`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    const semTag = gradebookSemester !== 'ALL' ? `_${gradebookSemester}` : '';
+    const subjTag = gradebookSubject !== 'ALL' ? `_${gradebookSubject.replace(/\s+/g, '_')}` : '';
+    link.setAttribute("download", `Gradebook_Results${subjTag}${semTag}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleCopyCode = (code) => {
     navigator.clipboard.writeText(code);
@@ -348,194 +427,528 @@ export default function TeacherDashboard() {
         </div>
       </div>
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>Loading examination records...</div>
-      ) : error ? (
-        <div className="glass-card" style={{ color: 'var(--rose)', textAlign: 'center' }}>{error}</div>
-      ) : exams.length === 0 ? (
-        <div className="glass-card" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
-          <BookOpen size={48} color="var(--primary)" style={{ opacity: 0.5, marginBottom: '1rem' }} />
-          <h3 style={{ fontSize: '1.4rem', marginBottom: '0.5rem' }}>No Exams Created Yet</h3>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', maxWidth: '400px', margin: '0 auto 1.5rem auto' }}>
-            Get started by creating your first exam. Google Gemini API or intelligent generators will draft interactive questions automatically!
-          </p>
-          {user?.role === 'admin' ? (
-            <Link to="/admin/dashboard" className="btn btn-primary">
-              <Shield size={18} /> View Institutional Exams & Approvals
-            </Link>
-          ) : user && user.isVerified === false ? (
-            <button
-              className="btn btn-secondary"
-              disabled
-              title="Account pending administrative approval"
-              style={{ opacity: 0.65, cursor: 'not-allowed' }}
-            >
-              <Sparkles size={18} /> Create Exam (Pending Admin Approval)
-            </button>
-          ) : (
-            <Link to="/teacher/create-exam" className="btn btn-primary">
-              <Sparkles size={18} /> Create First Exam
-            </Link>
-          )}
-        </div>
-      ) : (
-        <div className="grid-2">
-          {exams.map((exam) => {
-            const examId = exam._id || exam.id;
-            const windowStatus = getWindowStatus(exam.startTime, exam.endTime);
+      {/* Navigation Tabs (Exams vs Tabular Gradebook) */}
+      <div className="no-print" style={{
+        display: 'flex',
+        gap: '0.75rem',
+        borderBottom: '1px solid var(--border-color)',
+        paddingBottom: '0.75rem',
+        marginBottom: '2rem'
+      }}>
+        <button
+          onClick={() => setActiveTab('exams')}
+          style={{
+            background: activeTab === 'exams' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.04)',
+            color: activeTab === 'exams' ? '#ffffff' : 'var(--text-muted)',
+            border: '1px solid ' + (activeTab === 'exams' ? 'var(--primary)' : 'var(--border-color)'),
+            padding: '0.65rem 1.25rem',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontWeight: '700',
+            fontSize: '0.92rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            transition: 'all 0.2s'
+          }}
+        >
+          <BookOpen size={17} />
+          <span>Examinations</span>
+          <span style={{
+            background: activeTab === 'exams' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)',
+            padding: '0.15rem 0.5rem',
+            borderRadius: '9999px',
+            fontSize: '0.75rem'
+          }}>
+            {exams.length}
+          </span>
+        </button>
 
-            return (
-              <div key={examId} className="glass-card fade-in" style={{ display: 'flex', flexDirection: 'column' }}>
-                {/* Header with Title and Badges */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                  <div>
-                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
-                      <span className={`badge badge-${exam.status}`}>{exam.status}</span>
-                      <span className="badge badge-published" style={{ background: 'rgba(99, 102, 241, 0.15)', color: 'var(--primary)' }}>
-                        {exam.examType?.toUpperCase() || 'MCQ'}
-                      </span>
-                      <span style={{
-                        fontSize: '0.72rem',
-                        fontWeight: '700',
-                        padding: '0.2rem 0.55rem',
-                        borderRadius: '6px',
-                        background: windowStatus.bg,
-                        color: windowStatus.color,
-                        border: `1px solid ${windowStatus.border}`
-                      }}>
-                        {windowStatus.label}
-                      </span>
+        <button
+          onClick={() => setActiveTab('gradebook')}
+          style={{
+            background: activeTab === 'gradebook' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.04)',
+            color: activeTab === 'gradebook' ? '#ffffff' : 'var(--text-muted)',
+            border: '1px solid ' + (activeTab === 'gradebook' ? 'var(--primary)' : 'var(--border-color)'),
+            padding: '0.65rem 1.25rem',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontWeight: '700',
+            fontSize: '0.92rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            transition: 'all 0.2s'
+          }}
+        >
+          <Table size={17} />
+          <span>Student Results Tabulation</span>
+          {gradebookResults.length > 0 && (
+            <span style={{
+              background: activeTab === 'gradebook' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)',
+              padding: '0.15rem 0.5rem',
+              borderRadius: '9999px',
+              fontSize: '0.75rem'
+            }}>
+              {gradebookResults.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'exams' ? (
+        loading ? (
+          <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>Loading examination records...</div>
+        ) : error ? (
+          <div className="glass-card" style={{ color: 'var(--rose)', textAlign: 'center' }}>{error}</div>
+        ) : exams.length === 0 ? (
+          <div className="glass-card" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+            <BookOpen size={48} color="var(--primary)" style={{ opacity: 0.5, marginBottom: '1rem' }} />
+            <h3 style={{ fontSize: '1.4rem', marginBottom: '0.5rem' }}>No Exams Created Yet</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', maxWidth: '400px', margin: '0 auto 1.5rem auto' }}>
+              Get started by creating your first exam. Google Gemini API or intelligent generators will draft interactive questions automatically!
+            </p>
+            {user?.role === 'admin' ? (
+              <Link to="/admin/dashboard" className="btn btn-primary">
+                <Shield size={18} /> View Institutional Exams & Approvals
+              </Link>
+            ) : user && user.isVerified === false ? (
+              <button
+                className="btn btn-secondary"
+                disabled
+                title="Account pending administrative approval"
+                style={{ opacity: 0.65, cursor: 'not-allowed' }}
+              >
+                <Sparkles size={18} /> Create Exam (Pending Admin Approval)
+              </button>
+            ) : (
+              <Link to="/teacher/create-exam" className="btn btn-primary">
+                <Sparkles size={18} /> Create First Exam
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="grid-2">
+            {exams.map((exam) => {
+              const examId = exam._id || exam.id;
+              const windowStatus = getWindowStatus(exam.startTime, exam.endTime);
+
+              return (
+                <div key={examId} className="glass-card fade-in" style={{ display: 'flex', flexDirection: 'column' }}>
+                  {/* Header with Title and Badges */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
+                        <span className={`badge badge-${exam.status}`}>{exam.status}</span>
+                        <span className="badge badge-published" style={{ background: 'rgba(99, 102, 241, 0.15)', color: 'var(--primary)' }}>
+                          {exam.examType?.toUpperCase() || 'MCQ'}
+                        </span>
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: '700',
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '6px',
+                          background: windowStatus.bg,
+                          color: windowStatus.color,
+                          border: `1px solid ${windowStatus.border}`
+                        }}>
+                          {windowStatus.label}
+                        </span>
+                      </div>
+                      <h3 style={{ fontSize: '1.3rem', marginTop: '0.2rem', fontWeight: '700' }}>{exam.title}</h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                        {exam.subject} &bull; {exam.topic}
+                      </p>
                     </div>
-                    <h3 style={{ fontSize: '1.3rem', marginTop: '0.2rem', fontWeight: '700' }}>{exam.title}</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      {exam.subject} &bull; {exam.topic}
-                    </p>
+
+                    {exam.examCode && (
+                      <button
+                        onClick={() => handleCopyCode(exam.examCode)}
+                        title="Click to copy exam code"
+                        style={{
+                          background: 'rgba(99, 102, 241, 0.15)',
+                          border: '1px solid rgba(99, 102, 241, 0.3)',
+                          color: 'var(--primary)',
+                          padding: '0.3rem 0.6rem',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          fontSize: '0.8rem',
+                          fontWeight: '800',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.3rem'
+                        }}>
+                        {copiedCode === exam.examCode ? <Check size={12} /> : <Key size={12} />}
+                        {exam.examCode}
+                      </button>
+                    )}
                   </div>
 
-                  {exam.examCode && (
-                    <button
-                      onClick={() => handleCopyCode(exam.examCode)}
-                      title="Click to copy exam code"
-                      style={{
-                        background: 'rgba(99, 102, 241, 0.15)',
-                        border: '1px solid rgba(99, 102, 241, 0.3)',
-                        color: 'var(--primary)',
-                        padding: '0.3rem 0.6rem',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem',
-                        fontWeight: '800',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.3rem'
-                      }}>
-                      {copiedCode === exam.examCode ? <Check size={12} /> : <Key size={12} />}
-                      {exam.examCode}
-                    </button>
-                  )}
-                </div>
+                  {/* Exam Schedule Window Box */}
+                  <div style={{
+                    background: 'rgba(99, 102, 241, 0.08)',
+                    border: '1px solid rgba(99, 102, 241, 0.2)',
+                    borderRadius: '10px',
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.82rem',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.3rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: '700', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Calendar size={14} /> Schedule Window:
+                      </span>
+                      <button
+                        onClick={() => openScheduleModal(exam)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#6366f1',
+                          cursor: 'pointer',
+                          fontSize: '0.78rem',
+                          fontWeight: '700',
+                          textDecoration: 'underline',
+                          padding: 0
+                        }}>
+                        Change Window
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ffffff', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      <span>Start: <strong>{formatDisplayDate(exam.startTime)}</strong></span>
+                      <span>&rarr;</span>
+                      <span>End: <strong>{formatDisplayDate(exam.endTime)}</strong></span>
+                    </div>
+                  </div>
 
-                {/* Exam Schedule Window Box */}
-                <div style={{
-                  background: 'rgba(99, 102, 241, 0.08)',
-                  border: '1px solid rgba(99, 102, 241, 0.2)',
-                  borderRadius: '10px',
-                  padding: '0.75rem 1rem',
-                  fontSize: '0.82rem',
-                  marginBottom: '1rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.3rem'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: '700', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <Calendar size={14} /> Schedule Window:
-                    </span>
+                  {/* Parameters Info Grid */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.75rem',
+                    background: 'rgba(0,0,0,0.2)',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '10px',
+                    fontSize: '0.85rem',
+                    marginBottom: '1.25rem',
+                    color: 'var(--text-muted)'
+                  }}>
+                    <div>
+                      <Clock size={13} style={{ display: 'inline', marginRight: '4px' }} /> Duration:
+                      <strong style={{ color: '#ffffff', marginLeft: '4px' }}>{exam.durationMinutes}m</strong>
+                    </div>
+                    <div>
+                      Questions:
+                      <strong style={{ color: '#ffffff', marginLeft: '4px' }}>
+                        {exam.questionCount && exam.questions?.length && exam.questionCount < exam.questions.length
+                          ? `${exam.questionCount} of ${exam.questions.length} (Shuffled)`
+                          : `${exam.questions?.length || exam.questionCount || 0}`}
+                      </strong>
+                    </div>
+                    <div>
+                      Total Marks:
+                      <strong style={{ color: 'var(--emerald)', marginLeft: '4px' }}>{exam.totalMarks || 10} pts</strong>
+                    </div>
+                    <div>
+                      Passing:
+                      <strong style={{ color: 'var(--primary)', marginLeft: '4px' }}>{exam.passingPercentage || 40}%</strong>
+                    </div>
+                  </div>
+
+                  {/* Actions Grid */}
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => openScheduleModal(exam)}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#6366f1',
-                        cursor: 'pointer',
-                        fontSize: '0.78rem',
-                        fontWeight: '700',
-                        textDecoration: 'underline',
-                        padding: 0
-                      }}>
-                      Change Window
+                      className="btn btn-secondary"
+                      style={{ flex: 1, padding: '0.6rem 0.75rem', fontSize: '0.85rem' }}
+                      title="Edit Schedule Window & Exam Rules">
+                      <Calendar size={15} /> Edit Schedule
+                    </button>
+
+                    <Link to={`/teacher/review-questions/${examId}`} className="btn btn-secondary" style={{ flex: 1, padding: '0.6rem 0.75rem', fontSize: '0.85rem' }}>
+                      <Edit3 size={15} /> Questions
+                    </Link>
+
+                    <Link to={`/teacher/grading/${examId}`} className="btn btn-primary" style={{ flex: 1.2, padding: '0.6rem 0.75rem', fontSize: '0.85rem' }} title="View student results, response sheets, and scores">
+                      <Award size={15} /> View Results
+                    </Link>
+
+                    <button
+                      onClick={() => handleDeleteExam(examId)}
+                      className="btn btn-secondary"
+                      style={{ padding: '0.6rem 0.75rem', color: 'var(--rose)' }}
+                      title="Delete Exam">
+                      <Trash2 size={16} />
                     </button>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ffffff', flexWrap: 'wrap', gap: '0.4rem' }}>
-                    <span>Start: <strong>{formatDisplayDate(exam.startTime)}</strong></span>
-                    <span>&rarr;</span>
-                    <span>End: <strong>{formatDisplayDate(exam.endTime)}</strong></span>
-                  </div>
                 </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        /* Tabular Department Gradebook View */
+        <div className="fade-in">
+          {/* Print Letterhead */}
+          <div className="print-only" style={{ marginBottom: '1.5rem', borderBottom: '2px solid #000', paddingBottom: '0.8rem' }}>
+            <div style={{ fontSize: '1.4rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              ACADEMIC TABULATION SHEET & STUDENT MARKSHEET
+            </div>
+            <div style={{ fontSize: '1rem', fontWeight: '700', marginTop: '0.2rem' }}>
+              Department: {user?.department || 'All Departments'}
+            </div>
+            <div style={{ display: 'flex', gap: '2rem', fontSize: '0.85rem', marginTop: '0.35rem' }}>
+              <div><strong>Semester Filter:</strong> {gradebookSemester === 'ALL' ? 'All Semesters' : gradebookSemester}</div>
+              <div><strong>Subject Filter:</strong> {gradebookSubject === 'ALL' ? 'All Subjects' : gradebookSubject}</div>
+              <div><strong>Generated Date:</strong> {new Date().toLocaleDateString()}</div>
+              <div><strong>Faculty Evaluator:</strong> {user?.name}</div>
+            </div>
+          </div>
 
-                {/* Parameters Info Grid */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '0.75rem',
-                  background: 'rgba(0,0,0,0.2)',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '10px',
-                  fontSize: '0.85rem',
-                  marginBottom: '1.25rem',
-                  color: 'var(--text-muted)'
-                }}>
-                  <div>
-                    <Clock size={13} style={{ display: 'inline', marginRight: '4px' }} /> Duration:
-                    <strong style={{ color: '#ffffff', marginLeft: '4px' }}>{exam.durationMinutes}m</strong>
-                  </div>
-                  <div>
-                    Questions:
-                    <strong style={{ color: '#ffffff', marginLeft: '4px' }}>
-                      {exam.questionCount && exam.questions?.length && exam.questionCount < exam.questions.length
-                        ? `${exam.questionCount} of ${exam.questions.length} (Shuffled)`
-                        : `${exam.questions?.length || exam.questionCount || 0}`}
-                    </strong>
-                  </div>
-                  <div>
-                    Total Marks:
-                    <strong style={{ color: 'var(--emerald)', marginLeft: '4px' }}>{exam.totalMarks || 10} pts</strong>
-                  </div>
-                  <div>
-                    Passing:
-                    <strong style={{ color: 'var(--primary)', marginLeft: '4px' }}>{exam.passingPercentage || 40}%</strong>
-                  </div>
-                </div>
+          {/* Filter Bar */}
+          <div className="glass-card no-print" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: '800', margin: 0 }}>
+                  Department Gradebook Tabulation
+                </h3>
+                <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  Filter student performance by Semester or Subject. Export complete marksheets to CSV or print official grade sheets.
+                </p>
+              </div>
 
-                {/* Actions Grid */}
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                <button
+                  onClick={handleExportGradebookCSV}
+                  disabled={gradebookResults.length === 0}
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+                  title="Export results table to CSV"
+                >
+                  <Download size={15} /> Export CSV
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  disabled={gradebookResults.length === 0}
+                  className="btn btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+                  title="Print official marksheet"
+                >
+                  <Printer size={15} /> Print Tabulation
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem', fontWeight: '600' }}>
+                  <Filter size={13} style={{ display: 'inline', marginRight: '4px' }} /> Filter by Semester:
+                </label>
+                <select
+                  value={gradebookSemester}
+                  onChange={(e) => setGradebookSemester(e.target.value)}
+                  className="form-control"
+                  style={{ width: '100%', padding: '0.6rem', fontSize: '0.88rem' }}
+                >
+                  <option value="ALL">All Semesters</option>
+                  {availableSemesters.map(sem => (
+                    <option key={sem} value={sem}>{sem}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem', fontWeight: '600' }}>
+                  <BookOpen size={13} style={{ display: 'inline', marginRight: '4px' }} /> Filter by Subject:
+                </label>
+                <select
+                  value={gradebookSubject}
+                  onChange={(e) => setGradebookSubject(e.target.value)}
+                  className="form-control"
+                  style={{ width: '100%', padding: '0.6rem', fontSize: '0.88rem' }}
+                >
+                  <option value="ALL">All Subjects</option>
+                  {availableSubjects.map(sub => (
+                    <option key={sub} value={sub}>{sub}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem', fontWeight: '600' }}>
+                  <Search size={13} style={{ display: 'inline', marginRight: '4px' }} /> Search Candidate / Exam:
+                </label>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <input
+                    type="text"
+                    placeholder="Roll No, Name, or Exam..."
+                    value={gradebookSearch}
+                    onChange={(e) => setGradebookSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && fetchTeacherGradebook()}
+                    className="form-control"
+                    style={{ width: '100%', padding: '0.6rem', fontSize: '0.88rem' }}
+                  />
                   <button
-                    onClick={() => openScheduleModal(exam)}
+                    onClick={fetchTeacherGradebook}
                     className="btn btn-secondary"
-                    style={{ flex: 1, padding: '0.6rem 0.75rem', fontSize: '0.85rem' }}
-                    title="Edit Schedule Window & Exam Rules">
-                    <Calendar size={15} /> Edit Schedule
-                  </button>
-
-                  <Link to={`/teacher/review-questions/${examId}`} className="btn btn-secondary" style={{ flex: 1, padding: '0.6rem 0.75rem', fontSize: '0.85rem' }}>
-                    <Edit3 size={15} /> Questions
-                  </Link>
-
-                  <Link to={`/teacher/grading/${examId}`} className="btn btn-primary" style={{ flex: 1.2, padding: '0.6rem 0.75rem', fontSize: '0.85rem' }} title="View student results, response sheets, and scores">
-                    <Award size={15} /> View Results
-                  </Link>
-
-                  <button
-                    onClick={() => handleDeleteExam(examId)}
-                    className="btn btn-secondary"
-                    style={{ padding: '0.6rem 0.75rem', color: 'var(--rose)' }}
-                    title="Delete Exam">
-                    <Trash2 size={16} />
+                    style={{ padding: '0.6rem 0.85rem' }}
+                    title="Search"
+                  >
+                    <Search size={15} />
                   </button>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          </div>
+
+          {/* Tabulation Table */}
+          {gradebookLoading ? (
+            <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>
+              Loading tabulation gradebook...
+            </div>
+          ) : gradebookResults.length === 0 ? (
+            <div className="glass-card" style={{ textAlign: 'center', padding: '3.5rem 2rem' }}>
+              <Table size={44} color="var(--primary)" style={{ opacity: 0.5, marginBottom: '1rem' }} />
+              <h4 style={{ fontSize: '1.2rem', marginBottom: '0.4rem' }}>No Submissions Found</h4>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '420px', margin: '0 auto' }}>
+                No student examinations match the current filter criteria ({gradebookSemester !== 'ALL' ? `Semester: ${gradebookSemester}` : 'All Semesters'}, {gradebookSubject !== 'ALL' ? `Subject: ${gradebookSubject}` : 'All Subjects'}).
+              </p>
+            </div>
+          ) : (
+            <div className="glass-card" style={{ padding: '0.5rem', overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '0.85rem 1rem' }}>Roll No</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Student Name</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Semester</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Subject</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Exam Title</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Marks</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>%</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Result</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Violations</th>
+                    <th className="no-print" style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gradebookResults.map((sub, idx) => {
+                    const marks = sub.marksObtained !== null && sub.marksObtained !== undefined ? sub.marksObtained : 0;
+                    const total = sub.examTotalMarks || sub.totalMarks || 10;
+                    const pct = sub.percentage !== undefined ? sub.percentage : (total > 0 ? Math.round((marks / total) * 100) : 0);
+                    const passing = sub.examPassingPercentage || 40;
+                    const isTerm = sub.isTerminated || sub.status === 'terminated';
+                    const passed = !isTerm && pct >= passing;
+                    const examId = sub.examId || (typeof sub.exam === 'object' ? sub.exam?._id : sub.exam);
+
+                    return (
+                      <tr
+                        key={sub._id || sub.id || idx}
+                        style={{
+                          borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                          transition: 'background 0.15s'
+                        }}
+                      >
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: '800', fontFamily: 'monospace', color: 'var(--primary)' }}>
+                          {sub.studentRollNumber || 'N/A'}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <div style={{ fontWeight: '700' }}>{sub.studentName || 'Student'}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{sub.studentEmail}</div>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <span style={{
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '6px',
+                            background: 'rgba(99, 102, 241, 0.1)',
+                            fontSize: '0.78rem',
+                            fontWeight: '600',
+                            color: 'var(--primary)'
+                          }}>
+                            {sub.studentSemester || 'N/A'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: '600' }}>
+                          {sub.subject || 'General'}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <div style={{ fontWeight: '600' }}>{sub.examTitle || 'Exam'}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                            Code: {sub.examCode || 'N/A'}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: '700' }}>
+                          <span style={{ color: 'var(--emerald)' }}>{marks}</span> / {total}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: '800' }}>
+                          {pct}%
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          {isTerm ? (
+                            <span style={{
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '9999px',
+                              fontSize: '0.75rem',
+                              fontWeight: '800',
+                              background: 'rgba(244, 63, 94, 0.15)',
+                              color: 'var(--rose)'
+                            }}>
+                              Disqualified
+                            </span>
+                          ) : passed ? (
+                            <span style={{
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '9999px',
+                              fontSize: '0.75rem',
+                              fontWeight: '800',
+                              background: 'rgba(16, 185, 129, 0.15)',
+                              color: 'var(--emerald)'
+                            }}>
+                              Passed
+                            </span>
+                          ) : (
+                            <span style={{
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '9999px',
+                              fontSize: '0.75rem',
+                              fontWeight: '800',
+                              background: 'rgba(244, 63, 94, 0.15)',
+                              color: 'var(--rose)'
+                            }}>
+                              Failed
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          <span style={{
+                            color: (sub.tabSwitchCount || 0) > 0 ? 'var(--rose)' : 'var(--emerald)',
+                            fontWeight: '700'
+                          }}>
+                            {sub.tabSwitchCount || 0}
+                          </span>
+                        </td>
+                        <td className="no-print" style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          {examId ? (
+                            <Link
+                              to={`/teacher/grading/${examId}`}
+                              className="btn btn-secondary"
+                              style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem' }}
+                              title="Inspect response script and grading details"
+                            >
+                              View Script
+                            </Link>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

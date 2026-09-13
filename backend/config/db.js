@@ -270,10 +270,10 @@ const connectDB = async () => {
           isVerified: true
         });
         await student.save();
-      } else if (!student.department) {
-        student.department = 'Computer Science & Engineering';
-        student.course = 'B.Tech';
-        student.semester = 'Semester 4';
+      } else if (!student.department || !student.course || !student.semester) {
+        student.department = student.department || 'Computer Science & Engineering';
+        student.course = student.course || 'B.Tech';
+        student.semester = student.semester || 'Semester 4';
         await student.save();
       }
 

@@ -4,11 +4,12 @@ import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import {
   Shield, Users, BookOpen, Building, CheckCircle, Clock,
-  Eye, Filter, RefreshCw, Award, AlertTriangle, Check, X, Search, FileText, Trash2
+  Eye, Filter, RefreshCw, Award, AlertTriangle, Check, X, Search, FileText, Trash2,
+  Download, Printer, Table
 } from 'lucide-react';
 
-export default function AdminOverviewPage() {
-  const [activeTab, setActiveTab] = useState('exams'); // 'exams' | 'teachers' | 'students'
+export default function AdminOverviewPage({ defaultTab = 'exams' }) {
+  const [activeTab, setActiveTab] = useState(defaultTab); // 'exams' | 'teachers' | 'students' | 'results'
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -18,6 +19,17 @@ export default function AdminOverviewPage() {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Department Results & Printouts Reporting States
+  const [reportData, setReportData] = useState([]);
+  const [reportAnalytics, setReportAnalytics] = useState(null);
+  const [reportFilterOptions, setReportFilterOptions] = useState({ departments: [], courses: [], semesters: [], subjects: [] });
+  const [reportDept, setReportDept] = useState('ALL');
+  const [reportCourse, setReportCourse] = useState('ALL');
+  const [reportSemester, setReportSemester] = useState('ALL');
+  const [reportSubject, setReportSubject] = useState('ALL');
+  const [reportSearch, setReportSearch] = useState('');
+  const [reportLoading, setReportLoading] = useState(false);
 
   const { API_BASE_URL } = useContext(AuthContext);
 
@@ -42,9 +54,38 @@ export default function AdminOverviewPage() {
     }
   };
 
+  const fetchDepartmentResults = async () => {
+    setReportLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (reportDept && reportDept !== 'ALL') params.append('department', reportDept);
+      if (reportCourse && reportCourse !== 'ALL') params.append('course', reportCourse);
+      if (reportSemester && reportSemester !== 'ALL') params.append('semester', reportSemester);
+      if (reportSubject && reportSubject !== 'ALL') params.append('subject', reportSubject);
+      if (reportSearch && reportSearch.trim()) params.append('search', reportSearch.trim());
+
+      const res = await axios.get(`${API_BASE_URL}/admin/reports/department-results?${params.toString()}`);
+      setReportData(res.data.results || []);
+      setReportAnalytics(res.data.analytics || null);
+      if (res.data.filterOptions) {
+        setReportFilterOptions(res.data.filterOptions);
+      }
+    } catch (err) {
+      console.error('Failed to load department results report:', err);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'results') {
+      fetchDepartmentResults();
+    }
+  }, [activeTab, reportDept, reportCourse, reportSemester, reportSubject]);
 
   const handleVerifyStudent = async (studentId, status) => {
     setActionLoading(true);
@@ -126,6 +167,53 @@ export default function AdminOverviewPage() {
     }
   };
 
+  // Export Department CSV Handler
+  const handleExportDepartmentCSV = () => {
+    if (!reportData || reportData.length === 0) {
+      return alert('No student results available to export for the selected criteria.');
+    }
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Roll Number,Student Name,Email,Department,Course,Semester,Subject,Exam Title,Exam Code,Score,Total Marks,Percentage (%),Result Status,Violations (Tab Switches),Submission Status,Evaluation Date,Feedback\n";
+
+    reportData.forEach(sub => {
+      const roll = (sub.studentRollNumber || 'N/A').replace(/"/g, '""');
+      const name = (sub.studentName || 'N/A').replace(/"/g, '""');
+      const email = (sub.studentEmail || 'N/A').replace(/"/g, '""');
+      const dept = (sub.studentDepartment || reportDept || 'N/A').replace(/"/g, '""');
+      const course = (sub.studentCourse || 'N/A').replace(/"/g, '""');
+      const sem = (sub.studentSemester || 'N/A').replace(/"/g, '""');
+      const subj = (sub.subject || 'N/A').replace(/"/g, '""');
+      const title = (sub.examTitle || '').replace(/"/g, '""');
+      const code = (sub.examCode || 'N/A').replace(/"/g, '""');
+
+      const marks = sub.marksObtained !== null && sub.marksObtained !== undefined ? sub.marksObtained : 0;
+      const total = sub.examTotalMarks || sub.totalMarks || 10;
+      const pct = sub.percentage !== undefined ? sub.percentage : (total > 0 ? Math.round((marks / total) * 100) : 0);
+      const passing = sub.examPassingPercentage || 40;
+      const resultStatus = sub.isTerminated || sub.status === 'terminated' ? 'Disqualified' : (pct >= passing ? 'Passed' : 'Failed');
+      const tabSwitches = sub.tabSwitchCount || 0;
+      const status = sub.status || 'submitted';
+      const evalDate = sub.submittedAt ? new Date(sub.submittedAt).toLocaleDateString() : 'N/A';
+      const cleanFeedback = (sub.feedback || '').replace(/"/g, '""');
+
+      csvContent += `"${roll}","${name}","${email}","${dept}","${course}","${sem}","${subj}","${title}","${code}",${marks},${total},${pct}%,${resultStatus},${tabSwitches},${status},"${evalDate}","${cleanFeedback}"\n`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    const deptTag = reportDept !== 'ALL' ? `_${reportDept.replace(/\s+/g, '_')}` : '_All_Departments';
+    link.setAttribute("download", `Institutional_Results${deptTag}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrintInstitutionalReport = () => {
+    window.print();
+  };
+
   // Filter lists based on selected department and search
   const filteredExams = exams.filter(e => {
     const matchDept = selectedDept === 'ALL' || e.department === selectedDept;
@@ -157,9 +245,9 @@ export default function AdminOverviewPage() {
   const departmentsList = overview?.departments || [];
 
   return (
-    <div className="container" style={{ padding: '2rem 1.5rem', maxWidth: '1200px' }}>
+    <div className="container" style={{ padding: '2rem 1.5rem', maxWidth: '1280px' }}>
       {/* Admin Title Banner */}
-      <div style={{
+      <div className="no-print" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -177,20 +265,20 @@ export default function AdminOverviewPage() {
           </p>
         </div>
 
-        <button onClick={loadData} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        <button onClick={() => { loadData(); if (activeTab === 'results') fetchDepartmentResults(); }} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <RefreshCw size={16} /> Refresh Records
         </button>
       </div>
 
       {/* Global Stat Counters */}
-      <div className="grid-4" style={{ marginBottom: '2rem' }}>
+      <div className="grid-4 no-print" style={{ marginBottom: '2rem' }}>
         <div className="glass-card" style={{ padding: '1.25rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Departments</span>
             <Building size={20} color="var(--primary)" />
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: '800' }}>{departmentsList.length || 1}</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Active Divisions</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: '800' }}>{overview?.totalDepartments || 0}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Active Institutions</div>
         </div>
 
         <div className="glass-card" style={{ padding: '1.25rem' }}>
@@ -227,7 +315,7 @@ export default function AdminOverviewPage() {
 
       {/* Prominent Action Banner for Pending Faculty Approvals */}
       {teachers.some(t => !t.isVerified) && (
-        <div className="fade-in" style={{
+        <div className="fade-in no-print" style={{
           background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(217, 119, 6, 0.1))',
           border: '1px solid rgba(245, 158, 11, 0.5)',
           borderRadius: '14px',
@@ -288,7 +376,7 @@ export default function AdminOverviewPage() {
       )}
 
       {/* Filter and Tab Navigation Bar */}
-      <div className="glass-card" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
+      <div className="glass-card no-print" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -345,37 +433,46 @@ export default function AdminOverviewPage() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setActiveTab('results')}
+              className={`btn ${activeTab === 'results' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.88rem', padding: '0.6rem 1.1rem' }}
+            >
+              <Award size={16} /> Department Results & Printouts
+            </button>
           </div>
 
-          {/* Department dropdown & Search input */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Filter size={16} color="var(--text-muted)" />
-              <select
-                className="form-select"
-                style={{ width: 'auto', minWidth: '180px', padding: '0.45rem 0.8rem', fontSize: '0.85rem' }}
-                value={selectedDept}
-                onChange={(e) => setSelectedDept(e.target.value)}
-              >
-                <option value="ALL">All Departments</option>
-                {departmentsList.map(d => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
+          {/* Department dropdown & Search input (for tabs 1-3) */}
+          {activeTab !== 'results' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Filter size={16} color="var(--text-muted)" />
+                <select
+                  className="form-select"
+                  style={{ width: 'auto', minWidth: '180px', padding: '0.45rem 0.8rem', fontSize: '0.85rem' }}
+                  value={selectedDept}
+                  onChange={(e) => setSelectedDept(e.target.value)}
+                >
+                  <option value="ALL">All Departments</option>
+                  {departmentsList.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
 
-            <div style={{ position: 'relative' }}>
-              <Search size={15} color="var(--text-subtle)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input
-                type="text"
-                className="form-input"
-                style={{ paddingLeft: '2rem', paddingRight: '0.75rem', paddingTop: '0.45rem', paddingBottom: '0.45rem', fontSize: '0.85rem', width: '180px' }}
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+              <div style={{ position: 'relative' }}>
+                <Search size={15} color="var(--text-subtle)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ paddingLeft: '2rem', paddingRight: '0.75rem', paddingTop: '0.45rem', paddingBottom: '0.45rem', fontSize: '0.85rem', width: '180px' }}
+                  placeholder="Search..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -428,33 +525,36 @@ export default function AdminOverviewPage() {
                         {ex.course || '—'} {ex.semester ? `(${ex.semester})` : ''}
                       </td>
                       <td style={{ fontSize: '0.85rem' }}>
-                        <strong>{ex.questionCount || ex.questions?.length || 0}</strong> Qs • {ex.totalMarks || (ex.questionCount * 2) || 10} Marks
+                        {ex.questions?.length || 0} Qs • {ex.totalMarks || 10} Marks
                       </td>
                       <td style={{ fontSize: '0.85rem' }}>
-                        {ex.durationMinutes} Mins
+                        {ex.durationMinutes} mins
                       </td>
                       <td>
                         <span className={`badge ${ex.status === 'published' ? 'badge-published' : 'badge-draft'}`}>
                           {ex.status}
                         </span>
                       </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <Link
-                          to={`/teacher/grading/${ex._id || ex.id}`}
-                          className="btn btn-secondary"
-                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
-                        >
-                          <Eye size={13} /> View Results
-                        </Link>
-                        <button
-                          onClick={() => handleDeleteExam(ex._id || ex.id, ex.title)}
-                          className="btn btn-secondary"
-                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--rose)', borderColor: 'rgba(244, 63, 94, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', marginLeft: '0.4rem' }}
-                          disabled={actionLoading}
-                          title="Permanently Delete Examination"
-                        >
-                          <Trash2 size={13} /> Delete
-                        </button>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                          <Link
+                            to={`/teacher/grading/${ex._id || ex.id}`}
+                            className="btn btn-secondary"
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem' }}
+                            title="Audit Exam Submissions & Scores"
+                          >
+                            <Eye size={13} /> Audit
+                          </Link>
+                          <button
+                            onClick={() => handleDeleteExam(ex._id || ex.id, ex.title)}
+                            className="btn btn-secondary"
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', color: 'var(--rose)' }}
+                            disabled={actionLoading}
+                            title="Delete Exam & Submissions Permanently"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -464,24 +564,23 @@ export default function AdminOverviewPage() {
           </div>
         </div>
       ) : activeTab === 'teachers' ? (
-        /* TAB 2: TEACHERS TABLE */
+        /* TAB 2: FACULTY TEACHERS TABLE */
         <div className="glass-card fade-in" style={{ padding: '0', overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
             <div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: '700' }}>Faculty Teachers Directory ({filteredTeachers.length})</h3>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                Approve faculty teachers to permit them to create and manage examinations for their registered department.
+              <h3 style={{ fontSize: '1.15rem', fontWeight: '700' }}>Faculty Teachers ({filteredTeachers.length})</h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Institutional security gate: Approve faculty accounts to permit exam generation & scheduling
               </p>
             </div>
-
             {teachers.some(t => !t.isVerified) && (
               <button
                 onClick={handleVerifyAllTeachers}
                 className="btn btn-success"
-                style={{ padding: '0.45rem 0.9rem', fontSize: '0.85rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.45rem 0.9rem' }}
                 disabled={actionLoading}
               >
-                <Check size={15} /> Batch Approve All Pending Teachers
+                <Check size={14} /> Approve All Pending ({teachers.filter(t => !t.isVerified).length})
               </button>
             )}
           </div>
@@ -490,18 +589,19 @@ export default function AdminOverviewPage() {
             <table className="data-table" style={{ width: '100%' }}>
               <thead>
                 <tr>
-                  <th>Faculty Name</th>
+                  <th>Faculty Name & Email</th>
                   <th>Department</th>
-                  <th>Affiliation (Course / Sem)</th>
-                  <th>Approval Status</th>
-                  <th style={{ textAlign: 'right' }}>Action</th>
+                  <th>Designated Course / Semester</th>
+                  <th>Assigned Subject(s)</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredTeachers.length === 0 ? (
                   <tr>
-                    <td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                      No faculty teachers found for this department filter.
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                      No teachers found matching your filter criteria.
                     </td>
                   </tr>
                 ) : (
@@ -517,50 +617,63 @@ export default function AdminOverviewPage() {
                         </span>
                       </td>
                       <td style={{ fontSize: '0.85rem' }}>
-                        {tc.course || '—'} {tc.semester ? `• ${tc.semester}` : ''}
+                        {tc.course || '—'} {tc.semester ? `(${tc.semester})` : ''}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                          {tc.subjects && tc.subjects.length > 0 ? (
+                            tc.subjects.map((sub, i) => (
+                              <span key={i} style={{ background: 'rgba(255,255,255,0.05)', padding: '0.15rem 0.45rem', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {sub}
+                              </span>
+                            ))
+                          ) : (
+                            <span style={{ color: 'var(--text-subtle)', fontSize: '0.8rem' }}>All Subjects</span>
+                          )}
+                        </div>
                       </td>
                       <td>
                         {tc.isVerified ? (
-                          <span className="badge badge-published" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--emerald)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <CheckCircle size={13} /> Approved Faculty
+                          <span className="badge badge-published" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--emerald)' }}>
+                            <Check size={12} style={{ display: 'inline', marginRight: '3px' }} /> Approved
                           </span>
                         ) : (
-                          <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <AlertTriangle size={13} /> Pending Approval
+                          <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.18)', color: 'var(--amber)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                            Pending Approval
                           </span>
                         )}
                       </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {tc.isVerified ? (
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                          {tc.isVerified ? (
+                            <button
+                              onClick={() => handleVerifyTeacher(tc._id || tc.id, false)}
+                              className="btn btn-secondary"
+                              style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: 'var(--rose)' }}
+                              disabled={actionLoading}
+                            >
+                              Revoke
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleVerifyTeacher(tc._id || tc.id, true)}
+                              className="btn btn-success"
+                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+                              disabled={actionLoading}
+                            >
+                              Approve
+                            </button>
+                          )}
                           <button
-                            onClick={() => handleVerifyTeacher(tc._id || tc.id, false)}
+                            onClick={() => handleDeleteTeacher(tc._id || tc.id, tc.name)}
                             className="btn btn-secondary"
-                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: '#fbbf24', borderColor: 'rgba(245, 158, 11, 0.3)' }}
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: 'var(--rose)' }}
                             disabled={actionLoading}
-                            title="Suspend/Deactivate Teacher Access"
+                            title="Delete Teacher Account Permanently"
                           >
-                            Revoke
+                            <Trash2 size={13} />
                           </button>
-                        ) : (
-                          <button
-                            onClick={() => handleVerifyTeacher(tc._id || tc.id, true)}
-                            className="btn btn-success"
-                            style={{ padding: '0.35rem 0.85rem', fontSize: '0.78rem' }}
-                            disabled={actionLoading}
-                            title="Approve Teacher Access"
-                          >
-                            <Check size={13} /> Approve Faculty
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDeleteTeacher(tc._id || tc.id, tc.name)}
-                          className="btn btn-secondary"
-                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--rose)', borderColor: 'rgba(244, 63, 94, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', marginLeft: '0.4rem' }}
-                          disabled={actionLoading}
-                          title="Permanently Delete Teacher Account"
-                        >
-                          <Trash2 size={13} /> Delete
-                        </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -569,25 +682,24 @@ export default function AdminOverviewPage() {
             </table>
           </div>
         </div>
-      ) : (
-        /* TAB 3: STUDENTS VERIFICATION */
+      ) : activeTab === 'students' ? (
+        /* TAB 3: STUDENTS VERIFICATION TABLE */
         <div className="glass-card fade-in" style={{ padding: '0', overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
             <div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: '700' }}>Student Candidates Verification ({filteredStudents.length})</h3>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                Verify students to permit them to enter and take proctored examinations.
+              <h3 style={{ fontSize: '1.15rem', fontWeight: '700' }}>Student Verification & Enrolment ({filteredStudents.length})</h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Review candidate registrations and approve eligibility to sit for examinations
               </p>
             </div>
-
             {students.some(s => !s.isVerified) && (
               <button
                 onClick={handleVerifyAll}
                 className="btn btn-success"
-                style={{ padding: '0.45rem 0.9rem', fontSize: '0.85rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.45rem 0.9rem' }}
                 disabled={actionLoading}
               >
-                <Check size={15} /> Batch Verify All Pending
+                <Check size={14} /> Approve All Pending ({students.filter(s => !s.isVerified).length})
               </button>
             )}
           </div>
@@ -596,7 +708,7 @@ export default function AdminOverviewPage() {
             <table className="data-table" style={{ width: '100%' }}>
               <thead>
                 <tr>
-                  <th>Student</th>
+                  <th>Student Name & Email</th>
                   <th>Roll / ID</th>
                   <th>Department</th>
                   <th>Course / Sem</th>
@@ -618,7 +730,7 @@ export default function AdminOverviewPage() {
                         <div style={{ fontWeight: '700', fontSize: '0.92rem', color: '#ffffff' }}>{st.name}</div>
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{st.email}</div>
                       </td>
-                      <td style={{ fontSize: '0.85rem', fontFamily: 'monospace' }}>
+                      <td style={{ fontSize: '0.85rem', fontFamily: 'monospace', fontWeight: '700', color: 'var(--primary)' }}>
                         {st.rollNumber || '—'}
                       </td>
                       <td>
@@ -666,6 +778,309 @@ export default function AdminOverviewPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      ) : (
+        /* TAB 4: DEPARTMENT RESULTS, EXPORTS & PRINTOUTS (NEW!) */
+        <div className="fade-in">
+          {/* Printable Letterhead Header (Only appears when window.print() is called) */}
+          <div className="print-only" style={{ marginBottom: '1.5rem', textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '0.75rem' }}>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: '900', color: '#000', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              ONLINE EXAMINATION CONTROL DIVISION
+            </h1>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#111', marginTop: '0.2rem' }}>
+              OFFICIAL DEPARTMENTAL RESULTS & PERFORMANCE TABULATION
+            </h2>
+            <div style={{ fontSize: '0.9rem', color: '#333', marginTop: '0.25rem' }}>
+              Target Department: <strong>{reportDept === 'ALL' ? 'All Institutional Departments' : reportDept}</strong> &bull; Report Date: <strong>{new Date().toLocaleString()}</strong>
+            </div>
+            {reportAnalytics && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginTop: '0.5rem', fontSize: '0.85rem', color: '#222' }}>
+                <span>Total Candidates: <strong>{reportAnalytics.totalCandidates}</strong></span>
+                <span>Passed: <strong>{reportAnalytics.totalPassed}</strong></span>
+                <span>Failed / Disqualified: <strong>{reportAnalytics.totalFailed}</strong></span>
+                <span>Pass Rate: <strong>{reportAnalytics.passPercentage}%</strong></span>
+                <span>Avg Marks: <strong>{reportAnalytics.averageScore}%</strong></span>
+              </div>
+            )}
+          </div>
+
+          {/* Web Filtering & Action Header (Hidden during printing) */}
+          <div className="glass-card no-print" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Award color="var(--primary)" size={22} /> Departmental Examination Results & Marksheets
+                </h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                  Filter student examination attempts according to department, semester, and subject to generate official printouts or export complete CSV files.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button
+                  onClick={handleExportDepartmentCSV}
+                  className="btn btn-success"
+                  style={{ padding: '0.55rem 1rem', fontSize: '0.85rem' }}
+                  title="Export results including Roll Number, Semester, and Subject"
+                >
+                  <Download size={16} /> Export Department CSV
+                </button>
+                <button
+                  onClick={handlePrintInstitutionalReport}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.55rem 1rem', fontSize: '0.85rem' }}
+                  title="Open print preview to print or save PDF marksheet"
+                >
+                  <Printer size={16} /> Print Official Marksheet
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Controls Grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '0.75rem',
+              background: 'rgba(255,255,255,0.02)',
+              padding: '1rem',
+              borderRadius: '10px',
+              border: '1px solid var(--border-light)'
+            }}>
+              {/* Department Selector */}
+              <div>
+                <label className="form-label" style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Department</label>
+                <select
+                  className="form-select"
+                  value={reportDept}
+                  onChange={(e) => setReportDept(e.target.value)}
+                  style={{ fontSize: '0.85rem', padding: '0.45rem 0.75rem' }}
+                >
+                  <option value="ALL">All Departments</option>
+                  {(reportFilterOptions.departments.length > 0 ? reportFilterOptions.departments : departmentsList).map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Semester Selector */}
+              <div>
+                <label className="form-label" style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Semester</label>
+                <select
+                  className="form-select"
+                  value={reportSemester}
+                  onChange={(e) => setReportSemester(e.target.value)}
+                  style={{ fontSize: '0.85rem', padding: '0.45rem 0.75rem' }}
+                >
+                  <option value="ALL">All Semesters</option>
+                  {(reportFilterOptions.semesters.length > 0 ? reportFilterOptions.semesters : ['Semester 1', 'Semester 2', 'Semester 3', 'Semester 4', 'Semester 5', 'Semester 6', 'Semester 7', 'Semester 8']).map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Course Selector */}
+              <div>
+                <label className="form-label" style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Course</label>
+                <select
+                  className="form-select"
+                  value={reportCourse}
+                  onChange={(e) => setReportCourse(e.target.value)}
+                  style={{ fontSize: '0.85rem', padding: '0.45rem 0.75rem' }}
+                >
+                  <option value="ALL">All Courses</option>
+                  {(reportFilterOptions.courses.length > 0 ? reportFilterOptions.courses : ['B.Tech', 'B.E.', 'BCA', 'MCA', 'M.Tech']).map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Subject Selector */}
+              <div>
+                <label className="form-label" style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Subject</label>
+                <select
+                  className="form-select"
+                  value={reportSubject}
+                  onChange={(e) => setReportSubject(e.target.value)}
+                  style={{ fontSize: '0.85rem', padding: '0.45rem 0.75rem' }}
+                >
+                  <option value="ALL">All Subjects</option>
+                  {reportFilterOptions.subjects.map(sub => (
+                    <option key={sub} value={sub}>{sub}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Search Box */}
+              <div>
+                <label className="form-label" style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Search Candidate</label>
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    placeholder="Name, Roll No, Email..."
+                    value={reportSearch}
+                    onChange={(e) => setReportSearch(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') fetchDepartmentResults(); }}
+                    className="form-input"
+                    style={{ paddingLeft: '2.1rem', fontSize: '0.85rem', padding: '0.45rem 0.75rem 0.45rem 2.1rem' }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Departmental Analytics Summary Cards (Hidden during printing) */}
+          {reportAnalytics && (
+            <div className="grid-4 no-print" style={{ marginBottom: '1.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+              <div className="glass-card" style={{ padding: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>Candidates Appeared</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--text-main)', marginTop: '0.2rem' }}>{reportAnalytics.totalCandidates}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{reportDept === 'ALL' ? 'All Departments' : reportDept}</div>
+              </div>
+              <div className="glass-card" style={{ padding: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--emerald)', textTransform: 'uppercase', fontWeight: '700' }}>Passed</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--emerald)', marginTop: '0.2rem' }}>{reportAnalytics.totalPassed}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>Candidates cleared pass marks</div>
+              </div>
+              <div className="glass-card" style={{ padding: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--rose)', textTransform: 'uppercase', fontWeight: '700' }}>Failed / Disqualified</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--rose)', marginTop: '0.2rem' }}>{reportAnalytics.totalFailed}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{reportAnalytics.totalTerminated} terminated attempts</div>
+              </div>
+              <div className="glass-card" style={{ padding: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--sky)', textTransform: 'uppercase', fontWeight: '700' }}>Department Pass Rate</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--sky)', marginTop: '0.2rem' }}>{reportAnalytics.passPercentage}%</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>Average score: {reportAnalytics.averageScore}%</div>
+              </div>
+            </div>
+          )}
+
+          {/* Tabular Department Marksheet Table */}
+          <div className="glass-card" style={{ padding: '0', overflowX: 'auto' }}>
+            {reportLoading ? (
+              <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                Loading department results...
+              </div>
+            ) : reportData.length === 0 ? (
+              <div style={{ padding: '4rem', textAlign: 'center' }}>
+                <Award size={48} color="var(--text-subtle)" style={{ marginBottom: '1rem' }} />
+                <h3>No Examination Records Found</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.4rem', maxWidth: '500px', margin: '0 auto' }}>
+                  No candidate submissions match the selected department, semester, or subject criteria. Try selecting "All Departments" or clearing search filters.
+                </p>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid var(--border-light)' }}>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Department</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Roll No</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Candidate Name & Email</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sem & Course</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Subject & Exam</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Score / Total</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Percentage</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Result</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Violations</th>
+                    <th className="no-print" style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.map((sub, idx) => {
+                    const marks = sub.marksObtained ?? 0;
+                    const total = sub.examTotalMarks || sub.totalMarks || 10;
+                    const pct = sub.percentage !== undefined ? sub.percentage : (total > 0 ? Math.round((marks / total) * 100) : 0);
+                    const passing = sub.examPassingPercentage || 40;
+                    const isTerminated = sub.isTerminated || sub.status === 'terminated';
+                    const isPassed = !isTerminated && (sub.passed || pct >= passing);
+
+                    return (
+                      <tr key={sub._id || sub.id || idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        {/* Department */}
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.82rem', fontWeight: '600' }}>
+                          <span className="badge badge-published" style={{ background: 'rgba(99, 102, 241, 0.12)', color: 'var(--primary)', fontSize: '0.75rem' }}>
+                            {sub.studentDepartment || reportDept}
+                          </span>
+                        </td>
+
+                        {/* Roll Number */}
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: '700', color: 'var(--primary)', fontFamily: 'monospace' }}>
+                          {sub.studentRollNumber || 'N/A'}
+                        </td>
+
+                        {/* Student Details */}
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <div style={{ fontWeight: '700', fontSize: '0.9rem', color: '#ffffff' }}>{sub.studentName}</div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{sub.studentEmail}</div>
+                        </td>
+
+                        {/* Semester & Course */}
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.82rem' }}>
+                          <div>{sub.studentSemester || 'Semester 4'}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{sub.studentCourse || 'B.Tech'}</div>
+                        </td>
+
+                        {/* Subject & Exam */}
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>{sub.subject || 'Subject'}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{sub.examTitle || 'Exam'} {sub.examCode ? `(${sub.examCode})` : ''}</div>
+                        </td>
+
+                        {/* Marks */}
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.92rem', fontWeight: '700', color: isPassed ? 'var(--emerald)' : 'var(--rose)' }}>
+                          {sub.marksObtained !== null && sub.marksObtained !== undefined ? sub.marksObtained : '—'} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>/ {total}</span>
+                        </td>
+
+                        {/* Percentage */}
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.88rem', fontWeight: '700' }}>
+                          {pct}%
+                        </td>
+
+                        {/* Result Badge */}
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          {isTerminated ? (
+                            <span className="badge badge-draft" style={{ background: 'rgba(244, 63, 94, 0.2)', color: 'var(--rose)', borderColor: 'rgba(244, 63, 94, 0.4)' }}>
+                              DISQUALIFIED
+                            </span>
+                          ) : isPassed ? (
+                            <span className="badge badge-published" style={{ background: 'rgba(16, 185, 129, 0.2)', color: 'var(--emerald)', borderColor: 'rgba(16, 185, 129, 0.4)' }}>
+                              PASSED
+                            </span>
+                          ) : (
+                            <span className="badge badge-draft" style={{ background: 'rgba(245, 158, 11, 0.2)', color: 'var(--amber)', borderColor: 'rgba(245, 158, 11, 0.4)' }}>
+                              NEEDS IMPR.
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Tab Switches */}
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.82rem' }}>
+                          {sub.tabSwitchCount > 0 ? (
+                            <span style={{ color: 'var(--amber)', fontWeight: '700' }}>{sub.tabSwitchCount} switches</span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>0 (Clean)</span>
+                          )}
+                        </td>
+
+                        {/* Action Buttons (Hidden on Print) */}
+                        <td className="no-print" style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                          <Link
+                            to={`/teacher/grading/${sub.examId}`}
+                            className="btn btn-secondary"
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                            title="Audit individual answers and remarks"
+                          >
+                            <Eye size={13} /> View Audit
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

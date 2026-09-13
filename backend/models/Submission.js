@@ -43,6 +43,34 @@ const submissionSchema = new mongoose.Schema({
   },
   studentName: String,
   studentEmail: String,
+  studentRollNumber: {
+    type: String,
+    default: ''
+  },
+  studentSemester: {
+    type: String,
+    default: ''
+  },
+  studentCourse: {
+    type: String,
+    default: ''
+  },
+  studentDepartment: {
+    type: String,
+    default: ''
+  },
+  subject: {
+    type: String,
+    default: ''
+  },
+  examTitle: {
+    type: String,
+    default: ''
+  },
+  examCode: {
+    type: String,
+    default: ''
+  },
   submissionType: {
     type: String,
     enum: ['interactive', 'upload'],

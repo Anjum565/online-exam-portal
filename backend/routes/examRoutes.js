@@ -82,11 +82,11 @@ function isStudentEligibleForExam(student, exam) {
   // 2. Course match (Strict: students of same department but different course are BLOCKED)
   const studentCourse = (student.course || '').trim();
   const examCourse = (exam.course || '').trim();
-  if (examCourse && examCourse !== 'All Courses' && examCourse !== 'Other' && studentCourse) {
-    if (studentCourse.toLowerCase() !== examCourse.toLowerCase()) {
+  if (examCourse && examCourse !== 'All Courses' && examCourse !== 'Other') {
+    if (!studentCourse || studentCourse.toLowerCase() !== examCourse.toLowerCase()) {
       return {
         eligible: false,
-        reason: `This examination is strictly restricted to "${examCourse}" candidates. Your registered course is "${studentCourse}". Candidates from other courses cannot access or sit for this examination.`
+        reason: `This examination is strictly restricted to "${examCourse}" candidates. Your registered course is "${studentCourse || 'Not Assigned'}". Candidates from other courses cannot access or sit for this examination.`
       };
     }
   }
@@ -94,11 +94,11 @@ function isStudentEligibleForExam(student, exam) {
   // 3. Semester match (if exam specifies a specific semester)
   const studentSem = (student.semester || '').trim();
   const examSem = (exam.semester || '').trim();
-  if (examSem && examSem !== 'All Semesters' && examSem !== 'Other' && studentSem) {
-    if (studentSem.toLowerCase() !== examSem.toLowerCase()) {
+  if (examSem && examSem !== 'All Semesters' && examSem !== 'Other') {
+    if (!studentSem || studentSem.toLowerCase() !== examSem.toLowerCase()) {
       return {
         eligible: false,
-        reason: `This examination is scheduled for "${examSem}" candidates. Your registered semester is "${studentSem}".`
+        reason: `This examination is scheduled for "${examSem}" candidates. Your registered semester is "${studentSem || 'Not Assigned'}".`
       };
     }
   }
@@ -122,13 +122,15 @@ router.get('/', verifyToken, async (req, res) => {
         return res.json(exams);
       } else {
         const studentDept = req.user.department;
-        const studentCourse = req.user.course;
+        const studentCourse = (req.user.course || '').trim();
         const query = { status: { $in: ['published', 'completed'] } };
         if (studentDept && studentDept !== 'General') {
           query.department = { $in: [studentDept, 'General'] };
         }
         if (studentCourse && studentCourse !== 'All Courses') {
           query.course = { $in: [studentCourse, 'All Courses', '', null] };
+        } else if (!studentCourse) {
+          query.course = { $in: ['All Courses', '', null] };
         }
         const candidateExams = await Exam.find(query).sort({ startTime: 1 });
         const eligibleExams = candidateExams.filter(exam => isStudentEligibleForExam(req.user, exam).eligible);
@@ -217,8 +219,17 @@ router.post('/', verifyToken, isTeacher, async (req, res) => {
       });
     }
 
-    // Teacher Approval Enforcement: Must be approved by administrator
-    if (req.user.isVerified === false) {
+    // Teacher Approval Enforcement: Must be approved by administrator (checked against live DB status)
+    let isTeacherVerified = req.user.isVerified;
+    const User = require('../models/User');
+    if (getIsConnected()) {
+      const teacherUser = await User.findById(req.user.id);
+      if (teacherUser) isTeacherVerified = (teacherUser.isVerified ?? true);
+    } else {
+      const teacherUser = memoryDb.users.find(u => u._id === req.user.id || u.id === req.user.id);
+      if (teacherUser) isTeacherVerified = (teacherUser.isVerified ?? true);
+    }
+    if (isTeacherVerified === false) {
       return res.status(403).json({
         error: 'Your faculty account is pending administrative approval. The institution administrator must approve your account before you can create examinations.',
         isPendingApproval: true

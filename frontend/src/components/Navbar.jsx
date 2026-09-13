@@ -62,9 +62,14 @@ export default function Navbar() {
           {user ? (
             <>
               {user.role === 'admin' ? (
-                <Link to="/admin/dashboard" className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
-                  <Shield size={16} /> Institutional Admin Portal (Approvals & Exams)
-                </Link>
+                <>
+                  <Link to="/admin/dashboard" className="btn btn-primary" style={{ padding: '0.5rem 0.9rem', fontSize: '0.85rem' }}>
+                    <Shield size={16} /> Admin Command Center
+                  </Link>
+                  <Link to="/admin/results" className="btn btn-secondary" style={{ padding: '0.5rem 0.9rem', fontSize: '0.85rem' }}>
+                    <Award size={16} /> Results & Printouts
+                  </Link>
+                </>
               ) : user.role === 'teacher' ? (
                 <>
                   <Link to="/teacher/dashboard" className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
