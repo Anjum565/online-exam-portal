@@ -23,4 +23,5 @@ cloudflared.exe
 Thumbs.db
 *.log
 active_tunnel_url.txt
+scratch/
 
