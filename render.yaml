@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: online-examination-portal
+    runtime: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        value: super_secret_exam_portal_jwt_key_2026!
+      - key: MONGODB_URI
+        value: mongodb+srv://exam_admin:Exampass123@cluster0.lzsncrg.mongodb.net/exam_portal?retryWrites=true&w=majority&appName=Cluster0
