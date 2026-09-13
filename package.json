@@ -4,8 +4,8 @@
   "description": "Full-stack online examination system with auto-grading, proctoring safeguards, and persistent database",
   "main": "backend/server.js",
   "scripts": {
-    "install:all": "npm install --prefix backend && npm install --prefix frontend",
-    "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend --include=dev",
+    "build": "npm install --prefix backend && npm install --prefix frontend --include=dev && npm run build --prefix frontend",
     "start": "node backend/server.js",
     "dev:backend": "node backend/server.js",
     "dev:frontend": "npm run dev --prefix frontend"
