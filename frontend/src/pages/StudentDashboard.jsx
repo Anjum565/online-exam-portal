@@ -7,12 +7,13 @@ import { Award, Clock, FileText, CheckCircle, ArrowRight, AlertCircle, Sparkles,
 const formatDisplayDate = (dateInput) => {
   if (!dateInput) return 'Not scheduled';
   const d = new Date(dateInput);
-  if (isNaN(d.getTime())) return 'Invalid date';
+  if (isNaN(d.getTime())) return 'Not scheduled';
   return d.toLocaleString([], {
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
   });
 };
 

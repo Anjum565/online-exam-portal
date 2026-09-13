@@ -68,16 +68,31 @@ export default function TeacherDashboard() {
     }
   };
 
-  // Date format helper for datetime-local input
+  // Date format helper for datetime-local input using local wall-clock
   const toDatetimeLocal = (dateInput) => {
     if (!dateInput) return '';
     const d = new Date(dateInput);
     if (isNaN(d.getTime())) return '';
-    const offset = d.getTimezoneOffset() * 60000;
-    return new Date(d.getTime() - offset).toISOString().slice(0, 16);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
-  // Formatted date string for humans
+  const parseLocalInputToDate = (str) => {
+    if (!str) return new Date();
+    const [datePart, timePart] = str.split('T');
+    if (!datePart || !timePart) return new Date(str);
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hours, minutes] = timePart.split(':').map(Number);
+    return new Date(year, month - 1, day, hours, minutes, 0);
+  };
+
+  const localInputToISO = (str) => {
+    if (!str) return undefined;
+    const d = parseLocalInputToDate(str);
+    return d.toISOString();
+  };
+
+  // Formatted date string for humans in user's local timezone
   const formatDisplayDate = (dateInput) => {
     if (!dateInput) return 'Not scheduled';
     const d = new Date(dateInput);
@@ -86,8 +101,9 @@ export default function TeacherDashboard() {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
     });
   };
 
@@ -97,8 +113,8 @@ export default function TeacherDashboard() {
       return { label: 'Unscheduled', color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.05)', border: 'var(--border-light)' };
     }
     const now = new Date();
-    const start = new Date(startInput);
-    const end = new Date(endInput);
+    const start = typeof startInput === 'string' && startInput.length === 16 ? parseLocalInputToDate(startInput) : new Date(startInput);
+    const end = typeof endInput === 'string' && endInput.length === 16 ? parseLocalInputToDate(endInput) : new Date(endInput);
     if (now < start) {
       return { label: 'Upcoming Window', color: 'var(--amber)', bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.35)' };
     } else if (now > end) {
@@ -137,14 +153,15 @@ export default function TeacherDashboard() {
     const startIso = toDatetimeLocal(now);
     // Keep 2 hours default after now if end is in past
     let endIso = scheduleForm.endTime;
-    if (!endIso || new Date(endIso) <= now) {
+    const currentEnd = scheduleForm.endTime ? parseLocalInputToDate(scheduleForm.endTime) : null;
+    if (!endIso || (currentEnd && currentEnd <= now)) {
       endIso = toDatetimeLocal(new Date(now.getTime() + 2 * 3600 * 1000));
     }
     setScheduleForm(prev => ({ ...prev, startTime: startIso, endTime: endIso }));
   };
 
   const handleExtendHours = (hours) => {
-    const currentEnd = scheduleForm.endTime ? new Date(scheduleForm.endTime) : new Date();
+    const currentEnd = scheduleForm.endTime ? parseLocalInputToDate(scheduleForm.endTime) : new Date();
     const baseTime = currentEnd.getTime() < Date.now() ? Date.now() : currentEnd.getTime();
     const newEnd = new Date(baseTime + hours * 3600 * 1000);
     setScheduleForm(prev => ({ ...prev, endTime: toDatetimeLocal(newEnd) }));
@@ -165,7 +182,9 @@ export default function TeacherDashboard() {
       return;
     }
 
-    if (new Date(scheduleForm.endTime) <= new Date(scheduleForm.startTime)) {
+    const startObj = parseLocalInputToDate(scheduleForm.startTime);
+    const endObj = parseLocalInputToDate(scheduleForm.endTime);
+    if (endObj <= startObj) {
       setScheduleError('Schedule End time must be later than the Schedule Start time.');
       setScheduleSaving(false);
       return;
@@ -174,8 +193,8 @@ export default function TeacherDashboard() {
     try {
       const payload = {
         title: scheduleForm.title.trim(),
-        startTime: new Date(scheduleForm.startTime).toISOString(),
-        endTime: new Date(scheduleForm.endTime).toISOString(),
+        startTime: localInputToISO(scheduleForm.startTime),
+        endTime: localInputToISO(scheduleForm.endTime),
         durationMinutes: parseInt(scheduleForm.durationMinutes) || 30,
         passingPercentage: parseInt(scheduleForm.passingPercentage) || 40,
         examCode: scheduleForm.examCode.trim().toUpperCase(),

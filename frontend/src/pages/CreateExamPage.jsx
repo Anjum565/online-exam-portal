@@ -74,8 +74,29 @@ export default function CreateExamPage() {
   const [parsedQuestions, setParsedQuestions] = useState([]);
   const [pasteParseError, setPasteParseError] = useState('');
 
-  // Helper to format Date into YYYY-MM-DDTHH:mm for datetime-local input
-  const toLocalISO = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  // Helper to format Date into YYYY-MM-DDTHH:mm for datetime-local input using local wall-clock
+  const toLocalISO = (d) => {
+    if (!d) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  // Helper to parse local datetime-local string to Date object in exact local browser timezone
+  const parseLocalInputToDate = (str) => {
+    if (!str) return new Date();
+    const [datePart, timePart] = str.split('T');
+    if (!datePart || !timePart) return new Date(str);
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hours, minutes] = timePart.split(':').map(Number);
+    return new Date(year, month - 1, day, hours, minutes, 0);
+  };
+
+  // Helper to convert local datetime-local string to UTC ISO string with zero timezone distortion
+  const localInputToISO = (str) => {
+    if (!str) return null;
+    const d = parseLocalInputToDate(str);
+    return d.toISOString();
+  };
 
   // Default start time now, end time = start time + duration (e.g. +10 mins)
   const now = new Date();
@@ -90,7 +111,7 @@ export default function CreateExamPage() {
     setDurationMinutes(val);
     const mins = parseInt(val, 10);
     if (!isNaN(mins) && mins > 0) {
-      const baseStart = startTime ? new Date(startTime) : new Date();
+      const baseStart = startTime ? parseLocalInputToDate(startTime) : new Date();
       if (!isNaN(baseStart.getTime())) {
         const newEnd = new Date(baseStart.getTime() + mins * 60000);
         setEndTime(toLocalISO(newEnd));
@@ -106,7 +127,7 @@ export default function CreateExamPage() {
     setStartTime(val);
     const mins = parseInt(durationMinutes, 10) || 10;
     if (val) {
-      const baseStart = new Date(val);
+      const baseStart = parseLocalInputToDate(val);
       if (!isNaN(baseStart.getTime())) {
         const newEnd = new Date(baseStart.getTime() + mins * 60000);
         setEndTime(toLocalISO(newEnd));
@@ -116,7 +137,7 @@ export default function CreateExamPage() {
 
   // Quick preset adjusters
   const handleSetExactWindow = (minsToAdd) => {
-    const baseStart = startTime ? new Date(startTime) : new Date();
+    const baseStart = startTime ? parseLocalInputToDate(startTime) : new Date();
     const newEnd = new Date(baseStart.getTime() + minsToAdd * 60000);
     setEndTime(toLocalISO(newEnd));
   };
@@ -283,8 +304,8 @@ Explanation: 3NF requires tables to be in 2NF and have no transitive functional 
         randomizeQuestions,
         durationMinutes,
         passingPercentage,
-        startTime,
-        endTime,
+        startTime: localInputToISO(startTime),
+        endTime: localInputToISO(endTime),
         questions: finalQuestions
       });
 
@@ -1274,7 +1295,7 @@ Answer: C`}
                   Exam Timer: <strong>{durationMinutes} minutes</strong> once student clicks Start.
                   {startTime && endTime && (
                     <span style={{ marginLeft: '0.35rem', color: 'var(--text-muted)' }}>
-                      (Active portal window span: {Math.max(1, Math.round((new Date(endTime) - new Date(startTime)) / 60000))} minutes)
+                      (Active portal window span: {Math.max(1, Math.round((parseLocalInputToDate(endTime) - parseLocalInputToDate(startTime)) / 60000))} minutes)
                     </span>
                   )}
                 </span>

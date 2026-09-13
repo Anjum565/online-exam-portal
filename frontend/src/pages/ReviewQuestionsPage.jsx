@@ -33,8 +33,23 @@ export default function ReviewQuestionsPage() {
     if (!dateInput) return '';
     const d = new Date(dateInput);
     if (isNaN(d.getTime())) return '';
-    const offset = d.getTimezoneOffset() * 60000;
-    return new Date(d.getTime() - offset).toISOString().slice(0, 16);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const parseLocalInputToDate = (str) => {
+    if (!str) return new Date();
+    const [datePart, timePart] = str.split('T');
+    if (!datePart || !timePart) return new Date(str);
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hours, minutes] = timePart.split(':').map(Number);
+    return new Date(year, month - 1, day, hours, minutes, 0);
+  };
+
+  const localInputToISO = (str) => {
+    if (!str) return undefined;
+    const d = parseLocalInputToDate(str);
+    return d.toISOString();
   };
 
   useEffect(() => {
@@ -127,7 +142,7 @@ export default function ReviewQuestionsPage() {
   };
 
   const handleExtendHours = (hours) => {
-    const currentEnd = endTime ? new Date(endTime) : new Date();
+    const currentEnd = endTime ? parseLocalInputToDate(endTime) : new Date();
     const baseTime = currentEnd.getTime() < Date.now() ? Date.now() : currentEnd.getTime();
     const newEnd = new Date(baseTime + hours * 3600 * 1000);
     setEndTime(toDatetimeLocal(newEnd));
@@ -141,13 +156,15 @@ export default function ReviewQuestionsPage() {
   };
 
   const handleSyncExactDuration = () => {
-    const baseStart = startTime ? new Date(startTime) : new Date();
+    const baseStart = startTime ? parseLocalInputToDate(startTime) : new Date();
     const mins = parseInt(durationMinutes, 10) || 10;
     setEndTime(toDatetimeLocal(new Date(baseStart.getTime() + mins * 60 * 1000)));
   };
 
   const handleSaveAndPublish = async (newStatus = 'published') => {
-    if (startTime && endTime && new Date(endTime) <= new Date(startTime)) {
+    const startObj = startTime ? parseLocalInputToDate(startTime) : null;
+    const endObj = endTime ? parseLocalInputToDate(endTime) : null;
+    if (startObj && endObj && endObj <= startObj) {
       alert('Error: Schedule End time must be later than the Schedule Start time.');
       return;
     }
@@ -161,8 +178,8 @@ export default function ReviewQuestionsPage() {
         questionCount: activeCount,
         randomizeQuestions,
         status: newStatus,
-        startTime: startTime ? new Date(startTime).toISOString() : undefined,
-        endTime: endTime ? new Date(endTime).toISOString() : undefined,
+        startTime: localInputToISO(startTime),
+        endTime: localInputToISO(endTime),
         durationMinutes: parseInt(durationMinutes) || 30,
         passingPercentage: parseInt(passingPercentage) || 40,
         examCode: examCode.trim().toUpperCase()
