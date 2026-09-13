@@ -19,23 +19,25 @@ Last Updated : $timestamp
 Backend Status : ONLINE on port 5000
 
 ----------------------------------------------------------------------
-1. PRIMARY ACCESS ON THIS COMPUTER (USE THIS ON YOUR PC):
+1. PERMANENT 24/7 CLOUD LINK (WORKS WORLDWIDE - NEVER EXPIRES):
+   --> https://online-examination-portal-5i90.onrender.com
+   --> https://online-examination-portal-5i90.onrender.com/login
+   (Hosted 24/7 on Render + MongoDB Atlas with UptimeRobot active)
+
+2. PRIMARY LOCAL ACCESS (When testing locally on this PC):
    --> http://localhost:5000
    --> http://localhost:5000/login
-   (Never expires, never drops, works even without internet)
+   (Fastest, works completely offline)
 
-2. LOCAL WI-FI / HOTSPOT ACCESS (For Students on Phone / Tablet / PC):
+3. LOCAL WI-FI / HOTSPOT ACCESS (For Students on Local Network):
    --> http://$($localIp):5000
-   (Fastest, zero lag for anyone connected to your Wi-Fi or Hotspot)
-
-3. PUBLIC INTERNET LINK (Cloudflare Tunnel - Access from Anywhere):
-   --> $cfUrl
-   (Share this link with students or teachers anywhere in the world)
 ----------------------------------------------------------------------
 
-ADMIN & FACULTY QUICK ACCESS:
-- Faculty Teacher Setup: http://localhost:5000/register/faculty
-- Admin Command Center : http://localhost:5000/admin/dashboard
+ADMIN & FACULTY CLOUD QUICK ACCESS:
+- Live Cloud Portal    : https://online-examination-portal-5i90.onrender.com
+- Faculty Teacher Setup: https://online-examination-portal-5i90.onrender.com/register/faculty
+- Admin Command Center : https://online-examination-portal-5i90.onrender.com/admin/dashboard
+- Live Health Status   : https://online-examination-portal-5i90.onrender.com/api/health
 
 ======================================================================
 * To stop the portal anytime, run 'Stop Exam Portal' from your Desktop.
@@ -45,9 +47,9 @@ ADMIN & FACULTY QUICK ACCESS:
 Set-Content -Path "$desktop\Exam-Portal-Active-Links.txt" -Value $linksText -Force
 
 $wsh = New-Object -ComObject WScript.Shell
-$scPublic = $wsh.CreateShortcut("$desktop\Open Public Cloudflare Exam Portal.lnk")
-$scPublic.TargetPath = $cfUrl
-$scPublic.Description = "Open Public Examination Portal via Cloudflare"
-$scPublic.Save()
+$scCloud = $wsh.CreateShortcut("$desktop\Open 24-7 Cloud Exam Portal.lnk")
+$scCloud.TargetPath = "https://online-examination-portal-5i90.onrender.com"
+$scCloud.Description = "Open Permanent 24/7 Cloud Examination Portal"
+$scCloud.Save()
 
-Write-Host "Updated desktop links with: $cfUrl (Local IP: $localIp)"
+Write-Host "Updated desktop links with permanent 24/7 cloud URL: https://online-examination-portal-5i90.onrender.com"

@@ -4,7 +4,7 @@ import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import {
   Shield, Users, BookOpen, Building, CheckCircle, Clock,
-  Eye, Filter, RefreshCw, Award, AlertTriangle, Check, X, Search, FileText
+  Eye, Filter, RefreshCw, Award, AlertTriangle, Check, X, Search, FileText, Trash2
 } from 'lucide-react';
 
 export default function AdminOverviewPage() {
@@ -93,6 +93,34 @@ export default function AdminOverviewPage() {
       setTeachers(prev => prev.map(t => ({ ...t, isVerified: true })));
     } catch (err) {
       alert('Failed to approve all teachers.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteTeacher = async (teacherId, teacherName) => {
+    if (!window.confirm(`Are you sure you want to permanently delete teacher "${teacherName}"? This action cannot be undone.`)) return;
+    setActionLoading(true);
+    try {
+      await axios.delete(`${API_BASE_URL}/admin/teachers/${teacherId}`);
+      setTeachers(prev => prev.filter(t => (t._id !== teacherId && t.id !== teacherId)));
+      alert(`Teacher "${teacherName}" has been deleted permanently.`);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete teacher account.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteExam = async (examId, examTitle) => {
+    if (!window.confirm(`Are you sure you want to permanently delete examination "${examTitle}"? All associated student records and submissions will also be removed.`)) return;
+    setActionLoading(true);
+    try {
+      await axios.delete(`${API_BASE_URL}/admin/exams/${examId}`);
+      setExams(prev => prev.filter(e => (e._id !== examId && e.id !== examId)));
+      alert(`Examination "${examTitle}" and all related student submissions have been deleted.`);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete examination.');
     } finally {
       setActionLoading(false);
     }
@@ -410,7 +438,7 @@ export default function AdminOverviewPage() {
                           {ex.status}
                         </span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <Link
                           to={`/teacher/grading/${ex._id || ex.id}`}
                           className="btn btn-secondary"
@@ -418,6 +446,15 @@ export default function AdminOverviewPage() {
                         >
                           <Eye size={13} /> View Results
                         </Link>
+                        <button
+                          onClick={() => handleDeleteExam(ex._id || ex.id, ex.title)}
+                          className="btn btn-secondary"
+                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--rose)', borderColor: 'rgba(244, 63, 94, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', marginLeft: '0.4rem' }}
+                          disabled={actionLoading}
+                          title="Permanently Delete Examination"
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -493,13 +530,14 @@ export default function AdminOverviewPage() {
                           </span>
                         )}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         {tc.isVerified ? (
                           <button
                             onClick={() => handleVerifyTeacher(tc._id || tc.id, false)}
                             className="btn btn-secondary"
-                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--rose)', borderColor: 'rgba(244, 63, 94, 0.3)' }}
+                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: '#fbbf24', borderColor: 'rgba(245, 158, 11, 0.3)' }}
                             disabled={actionLoading}
+                            title="Suspend/Deactivate Teacher Access"
                           >
                             Revoke
                           </button>
@@ -509,10 +547,20 @@ export default function AdminOverviewPage() {
                             className="btn btn-success"
                             style={{ padding: '0.35rem 0.85rem', fontSize: '0.78rem' }}
                             disabled={actionLoading}
+                            title="Approve Teacher Access"
                           >
                             <Check size={13} /> Approve Faculty
                           </button>
                         )}
+                        <button
+                          onClick={() => handleDeleteTeacher(tc._id || tc.id, tc.name)}
+                          className="btn btn-secondary"
+                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--rose)', borderColor: 'rgba(244, 63, 94, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', marginLeft: '0.4rem' }}
+                          disabled={actionLoading}
+                          title="Permanently Delete Teacher Account"
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
                       </td>
                     </tr>
                   ))

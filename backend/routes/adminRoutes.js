@@ -470,4 +470,85 @@ router.put('/teachers/verify-all', async (req, res) => {
   }
 });
 
+// @route   DELETE /api/admin/teachers/:id
+// @desc    Permanently delete a teacher account (Admin only)
+router.delete('/teachers/:id', async (req, res) => {
+  try {
+    const teacherId = req.params.id;
+
+    if (getIsConnected()) {
+      try {
+        if (mongoose.Types.ObjectId.isValid(teacherId)) {
+          const teacher = await User.findById(teacherId);
+          if (!teacher) return res.status(404).json({ error: 'Teacher account not found.' });
+          if (teacher.role === 'admin') {
+            return res.status(400).json({ error: 'Cannot delete an administrator account.' });
+          }
+          await User.findByIdAndDelete(teacherId);
+        }
+      } catch (dbErr) {
+        console.warn('MongoDB teacher delete warning:', dbErr.message);
+      }
+    }
+
+    // Always remove from local persistent memory store
+    const idx = memoryDb.users.findIndex(u => (String(u._id) === String(teacherId) || String(u.id) === String(teacherId)) && u.role === 'teacher');
+    if (idx !== -1) {
+      memoryDb.users.splice(idx, 1);
+      saveStore();
+    }
+
+    return res.json({ message: 'Teacher account deleted permanently.' });
+  } catch (err) {
+    console.error('Error deleting teacher:', err);
+    res.status(500).json({ error: 'Failed to delete teacher account.' });
+  }
+});
+
+// @route   DELETE /api/admin/exams/:id
+// @desc    Permanently delete an examination and its student submissions (Admin only)
+router.delete('/exams/:id', async (req, res) => {
+  try {
+    const examId = req.params.id;
+    const Exam = require('../models/Exam');
+
+    if (getIsConnected()) {
+      try {
+        let deletedExam = null;
+        if (mongoose.Types.ObjectId.isValid(examId)) {
+          deletedExam = await Exam.findByIdAndDelete(examId);
+        }
+        if (!deletedExam) {
+          deletedExam = await Exam.findOneAndDelete({
+            $or: [{ id: examId }, { examCode: String(examId).toUpperCase() }]
+          });
+        }
+        // Delete all submissions associated with this exam
+        await Submission.deleteMany({
+          $or: [
+            { examId },
+            ...(mongoose.Types.ObjectId.isValid(examId) ? [{ examId: new mongoose.Types.ObjectId(examId) }] : [])
+          ]
+        });
+      } catch (dbErr) {
+        console.warn('MongoDB exam delete warning:', dbErr.message);
+      }
+    }
+
+    // Remove from local persistent memory store
+    const examIdx = memoryDb.exams.findIndex(e => String(e._id) === String(examId) || String(e.id) === String(examId) || e.examCode === String(examId).toUpperCase());
+    if (examIdx !== -1) {
+      memoryDb.exams.splice(examIdx, 1);
+    }
+    memoryDb.submissions = memoryDb.submissions.filter(s => String(s.examId) !== String(examId));
+    saveStore();
+
+    return res.json({ message: 'Examination and all related student submissions deleted permanently.' });
+  } catch (err) {
+    console.error('Error deleting exam:', err);
+    res.status(500).json({ error: 'Failed to delete examination.' });
+  }
+});
+
 module.exports = router;
+
