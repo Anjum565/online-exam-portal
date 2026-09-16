@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import InlineScriptViewer from '../components/InlineScriptViewer';
+import CodeBlock from '../components/CodeBlock';
 import {
   Users, CheckCircle, Save, Award, ArrowLeft, Download, Printer,
   ShieldAlert, Check, X, Clock, Table, FileText, Search, Filter, AlertTriangle
@@ -578,9 +579,11 @@ export default function GradingViewPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                     {selectedSub.answers.map((ans, idx) => (
                       <div key={idx} style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                          <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>Q{ans.questionOrder || idx + 1}: {ans.prompt}</span>
-                          <span style={{ fontSize: '0.85rem', fontWeight: '700', color: ans.isCorrect ? 'var(--emerald)' : 'var(--rose)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          <span style={{ fontWeight: '600', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: '1.45', flex: 1 }}>
+                            Q{ans.questionOrder || idx + 1}: {ans.prompt}
+                          </span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: '700', color: ans.isCorrect ? 'var(--emerald)' : (ans.isCorrect === false ? 'var(--rose)' : 'var(--amber)'), flexShrink: 0 }}>
                             {ans.marksAwarded} / {ans.maxMarks} pts
                           </span>
                         </div>
@@ -590,11 +593,16 @@ export default function GradingViewPage() {
                             <strong>Candidate Choice:</strong> {ans.selectedOptionText} {ans.isCorrect ? '✓' : '✗'}
                           </div>
                         ) : ans.textAnswer ? (
-                          <div style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                            <strong>Written Answer:</strong>
-                            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '4px', marginTop: '0.25rem', fontFamily: 'monospace' }}>
-                              {ans.textAnswer}
+                          <div style={{ marginTop: '0.6rem' }}>
+                            <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#38bdf8', marginBottom: '0.2rem' }}>
+                              Candidate Submitted Program:
                             </div>
+                            <CodeBlock
+                              code={ans.textAnswer}
+                              title="Candidate Code Submission"
+                              maxHeight="300px"
+                              fontSize="0.82rem"
+                            />
                           </div>
                         ) : (
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', fontStyle: 'italic', marginTop: '0.25rem' }}>

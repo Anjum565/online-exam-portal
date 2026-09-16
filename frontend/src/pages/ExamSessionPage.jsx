@@ -4,8 +4,10 @@ import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import {
   Clock, CheckCircle, AlertTriangle, HelpCircle, ArrowRight, ArrowLeft,
-  Bookmark, Flag, Award, RefreshCw, Eye, ShieldAlert, Check, X, LogOut
+  Bookmark, Flag, Award, RefreshCw, Eye, ShieldAlert, Check, X, LogOut, Terminal, Code
 } from 'lucide-react';
+import CodeBlock from '../components/CodeBlock';
+import CodeEditor from '../components/CodeEditor';
 
 export default function ExamSessionPage() {
   const { examId } = useParams();
@@ -20,7 +22,9 @@ export default function ExamSessionPage() {
 
   // Test state
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [answersMap, setAnswersMap] = useState({}); // { [questionIndex]: selectedOptionIndex }
+  const [answersMap, setAnswersMap] = useState({}); // { [questionIndex]: selectedOptionIndex | 'code_submitted' }
+  const [textAnswersMap, setTextAnswersMap] = useState({}); // { [questionIndex]: codeString }
+  const [codeLanguages, setCodeLanguages] = useState({}); // { [questionIndex]: languageString }
   const [markedMap, setMarkedMap] = useState({}); // { [questionIndex]: boolean }
   const [visitedMap, setVisitedMap] = useState({ 0: true });
 
@@ -242,8 +246,33 @@ export default function ExamSessionPage() {
     }));
   };
 
+  const handleCodeAnswerChange = (index, codeText) => {
+    setTextAnswersMap(prev => ({
+      ...prev,
+      [index]: codeText
+    }));
+    // Also track in answersMap so question palette marks question as answered!
+    if (codeText && codeText.trim().length > 0) {
+      setAnswersMap(prev => ({
+        ...prev,
+        [index]: 'code_submitted'
+      }));
+    } else {
+      setAnswersMap(prev => {
+        const updated = { ...prev };
+        delete updated[index];
+        return updated;
+      });
+    }
+  };
+
   const handleClearOption = () => {
     setAnswersMap(prev => {
+      const updated = { ...prev };
+      delete updated[currentIndex];
+      return updated;
+    });
+    setTextAnswersMap(prev => {
       const updated = { ...prev };
       delete updated[currentIndex];
       return updated;
@@ -282,15 +311,17 @@ export default function ExamSessionPage() {
 
     const timeSpentSeconds = startTimeMs ? Math.round((Date.now() - startTimeMs) / 1000) : 0;
 
-    // Structure answers payload
+    // Structure answers payload (supports both MCQs and typed programs)
     const formattedAnswers = exam.questions.map((q, idx) => {
-      const selectedOptionIndex = answersMap[idx] !== undefined ? answersMap[idx] : null;
+      const isMcqAns = typeof answersMap[idx] === 'number';
+      const selectedOptionIndex = isMcqAns ? answersMap[idx] : null;
+      const typedCode = textAnswersMap[idx] || (typeof answersMap[idx] === 'string' && answersMap[idx] !== 'code_submitted' ? answersMap[idx] : '');
       return {
         questionId: q._id || q.id || String(idx + 1),
         questionOrder: q.order || idx + 1,
         selectedOptionIndex,
         selectedOptionText: selectedOptionIndex !== null && q.options ? q.options[selectedOptionIndex] : '',
-        textAnswer: ''
+        textAnswer: typedCode || ''
       };
     });
 
@@ -754,35 +785,32 @@ export default function ExamSessionPage() {
                 </div>
 
                 {/* Question Prompt */}
-                <h3 style={{ fontSize: '1.2rem', fontWeight: '600', lineHeight: '1.5', marginBottom: currentQ.codeSnippet ? '1rem' : '2rem', color: '#f8fafc' }}>
+                <h3 style={{
+                  fontSize: '1.15rem',
+                  fontWeight: '600',
+                  lineHeight: '1.6',
+                  marginBottom: currentQ.codeSnippet ? '1rem' : '1.75rem',
+                  color: '#f8fafc',
+                  whiteSpace: 'pre-wrap'
+                }}>
                   {currentQ.prompt}
                 </h3>
 
-                {/* Code Snippet Display (if present) */}
+                {/* Code Snippet Display (if present in question) */}
                 {currentQ.codeSnippet && (
-                  <div style={{
-                    background: '#090d16',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
-                    borderRadius: '10px',
-                    padding: '1rem 1.25rem',
-                    marginBottom: '1.75rem',
-                    overflowX: 'auto',
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                    fontSize: '0.88rem',
-                    lineHeight: '1.6',
-                    color: '#38bdf8',
-                    boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.6)'
-                  }}>
-                    <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', marginBottom: '0.4rem', letterSpacing: '0.05em' }}>
-                      Program Code Snippet:
-                    </div>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{currentQ.codeSnippet}</pre>
+                  <div style={{ marginBottom: '1.75rem' }}>
+                    <CodeBlock
+                      code={currentQ.codeSnippet}
+                      language={currentQ.language || 'code'}
+                      title={`Reference Program (${(currentQ.language || 'code').toUpperCase()})`}
+                      fontSize="0.86rem"
+                    />
                   </div>
                 )}
 
-                {/* 4 Interactive Options */}
+                {/* Question Response Section: Options (MCQ) OR Code Editor (Coding/Program) */}
                 <div style={{ marginBottom: '2.5rem' }}>
-                  {(currentQ.options && currentQ.options.length > 0) ? (
+                  {(currentQ.options && currentQ.options.length >= 2) ? (
                     currentQ.options.map((opt, optIdx) => {
                       const isSelected = answersMap[currentIndex] === optIdx;
                       const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -812,7 +840,42 @@ export default function ExamSessionPage() {
                       );
                     })
                   ) : (
-                    <div style={{ color: 'var(--text-muted)' }}>No options defined for this question.</div>
+                    /* Interactive Student Code Editor */
+                    <div>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '0.65rem',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem'
+                      }}>
+                        <label style={{
+                          fontWeight: '700',
+                          fontSize: '0.92rem',
+                          color: '#38bdf8',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          margin: 0
+                        }}>
+                          <Terminal size={16} /> Type Your Program Solution
+                        </label>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                          ⌨️ <strong>Tab</strong> indents 4 spaces &bull; Line numbers & formatting preserved
+                        </span>
+                      </div>
+
+                      <CodeEditor
+                        value={textAnswersMap[currentIndex] || ''}
+                        onChange={(val) => handleCodeAnswerChange(currentIndex, val)}
+                        language={codeLanguages[currentIndex] || currentQ.language || 'python'}
+                        onLanguageChange={(lang) => setCodeLanguages(prev => ({ ...prev, [currentIndex]: lang }))}
+                        placeholder={`// Type your program code here...\n// Press Tab to indent code (4 spaces)\n\n`}
+                        minHeight="320px"
+                        title={`Solution Editor (${(codeLanguages[currentIndex] || currentQ.language || 'python').toUpperCase()})`}
+                      />
+                    </div>
                   )}
                 </div>
 

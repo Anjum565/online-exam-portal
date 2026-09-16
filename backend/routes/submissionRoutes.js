@@ -247,6 +247,11 @@ router.post('/:examId/submit-answers', verifyToken, isStudent, async (req, res) 
     const percentage = totalMarks > 0 ? Math.round((marksObtained / totalMarks) * 100) : 0;
     const passingPercentage = exam.passingPercentage || 40;
     const passed = percentage >= passingPercentage;
+    const hasCodingQuestions = examQuestions.some(q => q.type === 'coding' || q.type === 'short' || q.type === 'long' || q.type === 'subjective');
+    const submissionStatus = hasCodingQuestions ? 'pending_review' : 'graded';
+    const submissionFeedback = hasCodingQuestions
+      ? 'Objective answers auto-graded. Program code submitted and logged for faculty evaluation.'
+      : (passed ? 'Congratulations! You passed the exam.' : 'Exam completed. Review weak areas for improvement.');
 
     const submissionData = {
       examId,
@@ -272,8 +277,8 @@ router.post('/:examId/submit-answers', verifyToken, isStudent, async (req, res) 
       timeSpentSeconds: Number(timeSpentSeconds) || 0,
       tabSwitchCount: Number(tabSwitchCount) || 0,
       submittedAt: new Date(),
-      status: 'graded',
-      feedback: passed ? 'Congratulations! You passed the exam.' : 'Exam completed. Review weak areas for improvement.'
+      status: submissionStatus,
+      feedback: submissionFeedback
     };
 
     if (getIsConnected()) {

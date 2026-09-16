@@ -119,7 +119,7 @@ const submissionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['submitted', 'graded', 'terminated'],
+    enum: ['submitted', 'graded', 'terminated', 'pending_review', 'pending_evaluation'],
     default: 'graded'
   },
   isTerminated: {

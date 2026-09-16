@@ -9,6 +9,7 @@ import {
   Building, GraduationCap
 } from 'lucide-react';
 import { parsePastedQuestions } from '../utils/questionParser';
+import CodeBlock from '../components/CodeBlock';
 
 const AVAILABLE_COURSES = [
   'B.Tech',
@@ -216,34 +217,90 @@ export default function CreateExamPage() {
     setQuestionCount(questions.length);
   };
 
-  const handleLoadSampleText = () => {
-    const sample = `1. What is the output of print(2 ** 3) in Python?
-A) 6
-B) 8
-C) 9
-D) 5
-Answer: B
-Explanation: 2 raised to the power 3 is 8.
+  const handleLoadSampleText = (sampleType = 'mixed') => {
+    let sample = '';
 
-2. Consider the following code snippet. What will be the printed output?
-\`\`\`python
-items = ["apple", "banana", "cherry"]
-print(items[-1])
-\`\`\`
-A) apple
-B) banana
-C) cherry
-D) IndexError
-Answer: C
-Explanation: Index -1 accesses the last item in the list.
+    if (sampleType === 'coding') {
+      sample = `1. Write a program in C++ to check whether an integer entered by the user is a prime number.
+#include <iostream>
+using namespace std;
 
-3. Which normal form in relational database design eliminates transitive dependencies?
+bool isPrime(int n) {
+    // Complete prime checking logic here
+}
+
+int main() {
+    int num;
+    cout << "Enter a positive integer: ";
+    cin >> num;
+    if (isPrime(num))
+        cout << num << " is a prime number." << endl;
+    else
+        cout << num << " is not a prime number." << endl;
+    return 0;
+}
+Explanation: Students write and run prime testing logic in the dedicated code editor.
+
+2. Write a Python function to reverse words in a given sentence string.
+def reverse_words(sentence: str) -> str:
+    # Your code here
+    pass
+
+# Example test:
+# Input: "Hello World from Antigravity"
+# Output: "Antigravity from World Hello"
+Explanation: String manipulation function in Python.`;
+    } else {
+      sample = `1. What is the output of the following Java program?
+public class Main {
+    public static void main(String[] args) {
+        int x = 5;
+        System.out.println(x++ * 2);
+    }
+}
+A) 10
+B) 12
+C) 11
+D) Compilation Error
+Answer: A
+Explanation: Post-increment evaluates x (5) before incrementing, so 5 * 2 = 10.
+
+2. Predict the output of this C code snippet:
+#include <stdio.h>
+int main() {
+    int arr[] = {10, 20, 30};
+    printf("%d", *arr + 1);
+    return 0;
+}
+A) 11
+B) 20
+C) 10
+D) Garbage value
+Ans: A
+Explanation: *arr dereferences the first element (10), and + 1 yields 11.
+
+3. Consider the following Python function. What will be printed?
+def compute(n):
+    if n <= 1:
+        return 1
+    return n * compute(n - 1)
+
+print(compute(4))
+A) 24
+B) 12
+C) 16
+D) 4
+Answer: A
+Explanation: Factorial of 4 is 4 * 3 * 2 * 1 = 24.
+
+4. Which normal form in relational database design eliminates transitive dependencies?
 A) First Normal Form (1NF)
 B) Second Normal Form (2NF)
 C) Third Normal Form (3NF)
 D) Boyce-Codd Normal Form (BCNF)
 Answer: C
 Explanation: 3NF requires tables to be in 2NF and have no transitive functional dependencies.`;
+    }
 
     setPastedText(sample);
     const parsed = parsePastedQuestions(sample);
@@ -769,20 +826,35 @@ Explanation: 3NF requires tables to be in 2NF and have no transitive functional 
                 <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#ffffff', fontWeight: '700' }}>
                   <Clipboard size={16} color="var(--primary)" /> Paste Questions (Text, Markdown, or JSON)
                 </label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    onClick={handleLoadSampleText}
+                    onClick={() => handleLoadSampleText('mixed')}
                     style={{
                       background: 'transparent',
                       border: '1px solid var(--border-light)',
                       color: 'var(--primary)',
-                      padding: '0.25rem 0.6rem',
+                      padding: '0.25rem 0.55rem',
                       borderRadius: '6px',
-                      fontSize: '0.75rem',
+                      fontSize: '0.74rem',
                       cursor: 'pointer'
                     }}>
-                    Load Sample Example
+                    Sample: MCQs & Code
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleLoadSampleText('coding')}
+                    style={{
+                      background: 'rgba(56, 189, 248, 0.1)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      color: '#38bdf8',
+                      padding: '0.25rem 0.55rem',
+                      borderRadius: '6px',
+                      fontSize: '0.74rem',
+                      cursor: 'pointer',
+                      fontWeight: '600'
+                    }}>
+                    Sample: Student Coding Tasks
                   </button>
                   <button
                     type="button"
@@ -793,7 +865,7 @@ Explanation: 3NF requires tables to be in 2NF and have no transitive functional 
                       color: '#ffffff',
                       padding: '0.25rem 0.75rem',
                       borderRadius: '6px',
-                      fontSize: '0.75rem',
+                      fontSize: '0.74rem',
                       fontWeight: '700',
                       cursor: 'pointer'
                     }}>
@@ -1054,56 +1126,87 @@ Answer: C`}
                         background: 'rgba(0,0,0,0.35)',
                         border: '1px solid var(--border-light)',
                         borderRadius: '8px',
-                        padding: '0.75rem',
+                        padding: '0.85rem',
                         fontSize: '0.82rem'
                       }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
-                          <span style={{ fontWeight: '700', color: 'var(--primary)' }}>Q{qIdx + 1}: {q.prompt}</span>
-                          <span style={{
-                            fontSize: '0.7rem',
-                            fontWeight: '700',
-                            padding: '0.1rem 0.4rem',
-                            borderRadius: '4px',
-                            background: q.category === 'programming' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(99, 102, 241, 0.15)',
-                            color: q.category === 'programming' ? '#38bdf8' : 'var(--primary)'
-                          }}>
-                            {q.category === 'programming' ? '💻 Code' : '📘 Theory'}
-                          </span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem', gap: '0.5rem' }}>
+                          <div style={{ fontWeight: '700', color: 'var(--primary)', whiteSpace: 'pre-wrap', lineHeight: '1.45', flex: 1 }}>
+                            Q{qIdx + 1}: {q.prompt}
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexShrink: 0 }}>
+                            {q.type === 'coding' && (
+                              <span style={{
+                                fontSize: '0.68rem',
+                                fontWeight: '800',
+                                padding: '0.12rem 0.4rem',
+                                borderRadius: '4px',
+                                background: 'rgba(234, 179, 8, 0.15)',
+                                color: '#facc15',
+                                border: '1px solid rgba(234, 179, 8, 0.3)'
+                              }}>
+                                ✍️ Coding Solution
+                              </span>
+                            )}
+                            <span style={{
+                              fontSize: '0.68rem',
+                              fontWeight: '700',
+                              padding: '0.12rem 0.4rem',
+                              borderRadius: '4px',
+                              background: q.category === 'programming' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(99, 102, 241, 0.15)',
+                              color: q.category === 'programming' ? '#38bdf8' : 'var(--primary)'
+                            }}>
+                              {q.category === 'programming' ? '💻 Code' : '📘 Theory'}
+                            </span>
+                          </div>
                         </div>
 
                         {q.codeSnippet && (
-                          <div style={{
-                            background: '#090d16',
-                            padding: '0.4rem 0.6rem',
-                            borderRadius: '4px',
-                            fontFamily: 'monospace',
-                            fontSize: '0.75rem',
-                            color: '#38bdf8',
-                            marginBottom: '0.4rem'
-                          }}>
-                            <pre style={{ margin: 0 }}>{q.codeSnippet}</pre>
-                          </div>
+                          <CodeBlock
+                            code={q.codeSnippet}
+                            language={q.language || 'code'}
+                            title={`Program (${(q.language || 'code').toUpperCase()})`}
+                            maxHeight="220px"
+                            fontSize="0.75rem"
+                          />
                         )}
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem', fontSize: '0.75rem' }}>
-                          {q.options.map((opt, oIdx) => {
-                            const isCorrect = (q.correctOptionIndex === oIdx);
-                            return (
-                              <div key={oIdx} style={{
-                                padding: '0.2rem 0.4rem',
-                                borderRadius: '4px',
-                                background: isCorrect ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.02)',
-                                color: isCorrect ? 'var(--emerald)' : 'var(--text-muted)',
-                                fontWeight: isCorrect ? '700' : 'normal',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.3rem'
-                              }}>
-                                <span>{['A', 'B', 'C', 'D'][oIdx]})</span> {opt} {isCorrect && '✓'}
-                              </div>
-                            );
-                          })}
-                        </div>
+                        {q.options && q.options.length >= 2 ? (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem', fontSize: '0.75rem', marginTop: '0.4rem' }}>
+                            {q.options.map((opt, oIdx) => {
+                              const isCorrect = (q.correctOptionIndex === oIdx);
+                              return (
+                                <div key={oIdx} style={{
+                                  padding: '0.2rem 0.4rem',
+                                  borderRadius: '4px',
+                                  background: isCorrect ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.02)',
+                                  color: isCorrect ? 'var(--emerald)' : 'var(--text-muted)',
+                                  fontWeight: isCorrect ? '700' : 'normal',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem'
+                                }}>
+                                  <span>{['A', 'B', 'C', 'D'][oIdx]})</span> {opt} {isCorrect && '✓'}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{
+                            fontSize: '0.74rem',
+                            color: '#38bdf8',
+                            background: 'rgba(56, 189, 248, 0.08)',
+                            border: '1px dashed rgba(56, 189, 248, 0.25)',
+                            padding: '0.35rem 0.6rem',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            marginTop: '0.4rem'
+                          }}>
+                            <Code size={13} />
+                            <span>Candidates will write program code in the live Code Editor with Tab indentation.</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const questionSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['mcq', 'true_false', 'short', 'long'],
+    enum: ['mcq', 'true_false', 'short', 'long', 'coding', 'subjective'],
     default: 'mcq',
     required: true
   },

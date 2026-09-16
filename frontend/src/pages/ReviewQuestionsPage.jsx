@@ -6,6 +6,7 @@ import {
   CheckCircle, Save, Plus, Trash2, Send, HelpCircle,
   Edit3, ArrowLeft, Award, Calendar, Clock, Key, ChevronDown, ChevronUp, AlertCircle, Code
 } from 'lucide-react';
+import CodeEditor from '../components/CodeEditor';
 
 export default function ReviewQuestionsPage() {
   const { examId } = useParams();
@@ -610,31 +611,51 @@ export default function ReviewQuestionsPage() {
               </div>
 
               {/* Code Snippet Box (if programming question or has snippet) */}
-              {(q.category === 'programming' || q.codeSnippet) && (
-                <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                    <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#38bdf8' }}>
-                      <Code size={14} /> Code Snippet (Displayed in Monospace Syntax Box)
-                    </label>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Tested objectively with 4 choices</span>
-                  </div>
-                  <textarea
-                    className="form-textarea"
-                    rows={4}
-                    style={{
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                      fontSize: '0.85rem',
-                      background: '#090d16',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      lineHeight: '1.5'
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#38bdf8' }}>
+                    <Code size={15} /> Code Snippet / Program Specification
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const willHaveCode = !q.codeSnippet && q.category !== 'programming';
+                      const updated = [...questions];
+                      if (willHaveCode) {
+                        updated[qIndex].codeSnippet = '// Type or paste code snippet here';
+                        updated[qIndex].category = 'programming';
+                      } else {
+                        updated[qIndex].codeSnippet = '';
+                        updated[qIndex].category = 'theory';
+                      }
+                      setQuestions(updated);
                     }}
-                    placeholder="// Write or paste code snippet here..."
-                    value={q.codeSnippet || ''}
-                    onChange={(e) => handleQuestionChange(qIndex, 'codeSnippet', e.target.value)}
-                  />
+                    style={{
+                      background: (q.category === 'programming' || q.codeSnippet) ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                      border: `1px solid ${(q.category === 'programming' || q.codeSnippet) ? 'rgba(56, 189, 248, 0.3)' : 'var(--border-light)'}`,
+                      color: (q.category === 'programming' || q.codeSnippet) ? '#38bdf8' : 'var(--text-muted)',
+                      padding: '0.2rem 0.5rem',
+                      borderRadius: '4px',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {(q.category === 'programming' || q.codeSnippet) ? '✓ Code Snippet Attached' : '+ Add Code Snippet'}
+                  </button>
                 </div>
-              )}
+
+                {(q.category === 'programming' || q.codeSnippet) && (
+                  <CodeEditor
+                    value={q.codeSnippet || ''}
+                    onChange={(val) => handleQuestionChange(qIndex, 'codeSnippet', val)}
+                    language={q.language || 'python'}
+                    onLanguageChange={(lang) => handleQuestionChange(qIndex, 'language', lang)}
+                    title={`Code Snippet (${(q.language || 'python').toUpperCase()})`}
+                    minHeight="180px"
+                    placeholder="// Type or paste your code snippet here. Tab key indents 4 spaces."
+                  />
+                )}
+              </div>
 
               {/* Options Editor (for MCQs) */}
               {isMcq && q.options && (
