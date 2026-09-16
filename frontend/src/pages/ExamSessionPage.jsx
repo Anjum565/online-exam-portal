@@ -5,7 +5,7 @@ import axios from 'axios';
 import {
   Clock, CheckCircle, AlertTriangle, HelpCircle, ArrowRight, ArrowLeft,
   Bookmark, Flag, Award, RefreshCw, Eye, ShieldAlert, Check, X, LogOut, Terminal, Code,
-  Camera, Video, VideoOff, Layers, UserCheck, ChevronUp, ChevronDown
+  Layers, UserCheck
 } from 'lucide-react';
 import CodeBlock from '../components/CodeBlock';
 import CodeEditor from '../components/CodeEditor';
@@ -31,13 +31,6 @@ export default function ExamSessionPage() {
 
   // Mobile drawer palette & responsiveness
   const [showMobilePalette, setShowMobilePalette] = useState(false);
-
-  // Webcam Proctoring
-  const [webcamActive, setWebcamActive] = useState(false);
-  const [webcamReady, setWebcamReady] = useState(false);
-  const [isWebcamMinimized, setIsWebcamMinimized] = useState(false);
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
 
   // Timer & proctoring
   const [secondsRemaining, setSecondsRemaining] = useState(0);
@@ -225,76 +218,6 @@ export default function ExamSessionPage() {
     return () => clearInterval(timer);
   }, [examPhase, secondsRemaining]);
 
-  // Start webcam feed for live proctoring
-  const startWebcam = async () => {
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' },
-        audio: false
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
-      }
-      setWebcamActive(true);
-      setWebcamReady(true);
-    } catch (err) {
-      console.warn('Webcam not available or permission denied:', err.message);
-    }
-  };
-
-  // Capture canvas snapshot and upload to backend
-  const captureAndUploadSnapshot = async (trigger = 'periodic') => {
-    if (!videoRef.current || !streamRef.current) return;
-    try {
-      const video = videoRef.current;
-      if (video.videoWidth === 0 || video.videoHeight === 0) return;
-      const canvas = document.createElement('canvas');
-      canvas.width = 240;
-      canvas.height = 180;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, 240, 180);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.45);
-      await axios.post(`${API_BASE_URL}/submissions/${examId}/snapshot`, {
-        image: dataUrl,
-        trigger
-      });
-    } catch (err) {
-      // Non-blocking background capture
-    }
-  };
-
-  // Periodic snapshot interval during active exam
-  useEffect(() => {
-    if (examPhase !== 'in_progress' || !webcamActive) return;
-
-    // Capture first snapshot 4s after start
-    const initialTimer = setTimeout(() => {
-      captureAndUploadSnapshot('initial');
-    }, 4000);
-
-    // Periodic capture every 75 seconds
-    const interval = setInterval(() => {
-      captureAndUploadSnapshot('periodic');
-    }, 75000);
-
-    return () => {
-      clearTimeout(initialTimer);
-      clearInterval(interval);
-    };
-  }, [examPhase, webcamActive]);
-
-  // Clean up webcam media stream on unmount
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
-
   const handleStartExam = () => {
     if (!exam || !exam.questions || exam.questions.length === 0) {
       alert('This exam currently has no questions configured.');
@@ -306,9 +229,6 @@ export default function ExamSessionPage() {
     setStartTimeMs(Date.now());
     setExamPhase('in_progress');
     setVisitedMap({ 0: true });
-
-    // Request webcam proctoring
-    startWebcam();
 
     // Try requesting fullscreen safely for distraction-free exam mode
     try {
@@ -417,15 +337,6 @@ export default function ExamSessionPage() {
 
       // Clear attempt seed on successful completion
       localStorage.removeItem(`exam_attempt_seed_${examId}`);
-
-      // Capture final proctoring snapshot and stop stream
-      try {
-        await captureAndUploadSnapshot('final');
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(t => t.stop());
-        }
-        setWebcamActive(false);
-      } catch (e) {}
 
       // Exit fullscreen if active
       try {
@@ -820,45 +731,6 @@ export default function ExamSessionPage() {
             </button>
           </div>
         </div>
-
-        {/* Floating Live Webcam Proctoring Picture-in-Picture Box */}
-        {webcamActive && (
-          <div className={`webcam-pip-box ${isWebcamMinimized ? 'minimized' : ''}`}>
-            <div className="webcam-pip-bar">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.72rem', fontWeight: '700', color: '#f43f5e' }}>
-                <span className="live-pulse-dot" /> REC PROCTORING
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsWebcamMinimized(!isWebcamMinimized)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  fontSize: '0.75rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '2px 4px'
-                }}>
-                {isWebcamMinimized ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-            </div>
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              style={{
-                width: '100%',
-                height: isWebcamMinimized ? '0px' : '115px',
-                objectFit: 'cover',
-                display: isWebcamMinimized ? 'none' : 'block',
-                background: '#090d16'
-              }}
-            />
-          </div>
-        )}
 
         {/* Main Test Body: Question Card + Palette */}
         <div className="exam-room-grid">

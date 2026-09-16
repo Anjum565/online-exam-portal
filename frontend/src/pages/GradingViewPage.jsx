@@ -7,7 +7,7 @@ import CodeBlock from '../components/CodeBlock';
 import {
   Users, CheckCircle, Save, Award, ArrowLeft, Download, Printer,
   ShieldAlert, Check, X, Clock, Table, FileText, Search, Filter, AlertTriangle,
-  Camera, RefreshCw, Eye
+  RefreshCw, Eye
 } from 'lucide-react';
 
 export default function GradingViewPage() {
@@ -27,9 +27,6 @@ export default function GradingViewPage() {
   const [selectedSemester, setSelectedSemester] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-
-  // Proctoring snapshot preview modal
-  const [selectedSnapshotSub, setSelectedSnapshotSub] = useState(null);
 
   const { API_BASE_URL } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -537,17 +534,6 @@ export default function GradingViewPage() {
                                 <RefreshCw size={13} /> Re-allow
                               </button>
                             )}
-
-                            {sub.proctoringSnapshots && sub.proctoringSnapshots.length > 0 && (
-                              <button
-                                onClick={() => setSelectedSnapshotSub(sub)}
-                                className="btn btn-secondary"
-                                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}
-                                title="View candidate webcam snapshots captured during examination"
-                              >
-                                <Camera size={13} /> {sub.proctoringSnapshots.length} Snaps
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -634,17 +620,6 @@ export default function GradingViewPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--rose)', fontSize: '0.8rem', background: 'rgba(244, 63, 94, 0.1)', padding: '0.35rem 0.65rem', borderRadius: '6px' }}>
                           <ShieldAlert size={14} /> {selectedSub.tabSwitchCount} Focus Violations
                         </div>
-                      )}
-                      {selectedSub.proctoringSnapshots && selectedSub.proctoringSnapshots.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSnapshotSub(selectedSub)}
-                          className="btn btn-secondary"
-                          style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}
-                          title="View webcam proctoring snapshots"
-                        >
-                          <Camera size={13} /> {selectedSub.proctoringSnapshots.length} Snapshots
-                        </button>
                       )}
                     </div>
                   </div>
@@ -781,71 +756,6 @@ export default function GradingViewPage() {
                 Select a candidate from the left panel to begin evaluation.
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Proctoring Snapshots Modal */}
-      {selectedSnapshotSub && (
-        <div className="modal-backdrop">
-          <div className="modal-dialog" style={{ maxWidth: '780px', maxHeight: '85vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
-              <div>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ffffff' }}>
-                  <Camera size={18} color="var(--primary)" /> Proctoring Snapshot Audit
-                </h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.2rem 0 0 0' }}>
-                  Candidate: <strong>{selectedSnapshotSub.studentName}</strong> &bull; {selectedSnapshotSub.studentRollNumber || selectedSnapshotSub.studentEmail}
-                </p>
-              </div>
-              <button
-                onClick={() => setSelectedSnapshotSub(null)}
-                className="btn btn-secondary"
-                style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem' }}>
-                <X size={16} />
-              </button>
-            </div>
-
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-              gap: '1rem',
-              marginBottom: '1.5rem'
-            }}>
-              {(selectedSnapshotSub.proctoringSnapshots || []).map((snap, sIdx) => (
-                <div key={sIdx} style={{
-                  background: 'rgba(0, 0, 0, 0.5)',
-                  borderRadius: '10px',
-                  overflow: 'hidden',
-                  border: `1px solid ${snap.trigger === 'violation' ? 'var(--rose)' : 'var(--border-light)'}`
-                }}>
-                  <img
-                    src={snap.image}
-                    alt={`Snapshot ${sIdx + 1}`}
-                    style={{ width: '100%', height: '150px', objectFit: 'cover', display: 'block', background: '#000' }}
-                  />
-                  <div style={{ padding: '0.6rem 0.75rem', fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.8)' }}>
-                    <span style={{
-                      fontWeight: '700',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                      color: snap.trigger === 'violation' ? 'var(--rose)' : (snap.trigger === 'initial' ? 'var(--primary)' : '#34d399')
-                    }}>
-                      {snap.trigger || 'Periodic'}
-                    </span>
-                    <span style={{ color: 'var(--text-muted)' }}>
-                      {new Date(snap.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setSelectedSnapshotSub(null)} className="btn btn-primary" style={{ padding: '0.5rem 1.5rem' }}>
-                Close Audit
-              </button>
-            </div>
           </div>
         </div>
       )}
