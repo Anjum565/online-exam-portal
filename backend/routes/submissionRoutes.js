@@ -131,6 +131,169 @@ router.post('/:examId/terminate-session', verifyToken, isStudent, async (req, re
   }
 });
 
+// @route   POST /api/submissions/:examId/snapshot
+// @desc    Upload compressed periodic webcam proctoring snapshot
+router.post('/:examId/snapshot', verifyToken, isStudent, async (req, res) => {
+  try {
+    const examId = req.params.examId;
+    const { image, trigger = 'periodic' } = req.body;
+
+    if (!image) {
+      return res.status(400).json({ error: 'No image data received.' });
+    }
+
+    const exam = await findExam(examId);
+    if (!exam) {
+      return res.status(404).json({ error: 'Exam not found.' });
+    }
+
+    let submission = null;
+    if (getIsConnected()) {
+      submission = await Submission.findOne({
+        $or: [
+          { examId: exam._id, studentId: req.user.id },
+          { examId: examId, studentId: req.user.id }
+        ]
+      });
+    } else {
+      submission = memoryDb.submissions.find(s => (
+        (s.examId === examId || String(s.examId) === String(examId) || String(s.examId) === String(exam._id)) &&
+        (s.studentId === req.user.id || String(s.studentId) === String(req.user.id))
+      ));
+    }
+
+    const newSnapshot = {
+      timestamp: new Date(),
+      image,
+      trigger
+    };
+
+    if (!submission) {
+      // Create lightweight placeholder submission record to store initial snapshots
+      const subData = {
+        examId,
+        studentId: req.user.id,
+        studentName: req.user.name,
+        studentEmail: req.user.email,
+        studentRollNumber: req.user.rollNumber || '',
+        studentSemester: req.user.semester || exam.semester || '',
+        studentCourse: req.user.course || exam.course || '',
+        studentDepartment: req.user.department || exam.department || '',
+        subject: exam.subject || '',
+        examTitle: exam.title || '',
+        examCode: exam.examCode || '',
+        submissionType: 'interactive',
+        status: 'pending_evaluation',
+        proctoringSnapshots: [newSnapshot]
+      };
+
+      if (getIsConnected()) {
+        submission = new Submission(subData);
+        await submission.save();
+      } else {
+        const mockId = 'sub_' + Date.now() + Math.floor(Math.random() * 1000);
+        submission = { _id: mockId, id: mockId, ...subData };
+        memoryDb.submissions.push(submission);
+        saveStore();
+      }
+    } else {
+      // Append snapshot, capping at 10 items to prevent storage bloat
+      if (!submission.proctoringSnapshots) {
+        submission.proctoringSnapshots = [];
+      }
+      if (submission.proctoringSnapshots.length >= 10) {
+        submission.proctoringSnapshots.shift(); // Remove oldest
+      }
+      submission.proctoringSnapshots.push(newSnapshot);
+
+      if (getIsConnected()) {
+        await submission.save();
+      } else {
+        saveStore();
+      }
+    }
+
+    res.json({
+      success: true,
+      snapshotCount: submission.proctoringSnapshots ? submission.proctoringSnapshots.length : 1
+    });
+  } catch (err) {
+    console.error('Error saving proctoring snapshot:', err);
+    res.status(500).json({ error: 'Failed to save snapshot.' });
+  }
+});
+
+// @route   PUT /api/submissions/:examId/re-allow/:studentId
+// @desc    Admin or Faculty re-allows a student whose exam was terminated (mistaken minimization/disconnect)
+router.put('/:examId/re-allow/:studentId', verifyToken, async (req, res) => {
+  try {
+    const { examId, studentId } = req.params;
+    const { reason = 'Authorized by administrator / faculty after mistaken minimization' } = req.body;
+
+    // Permissions: Admin can re-allow any student; Teachers can re-allow within their department
+    const exam = await findExam(examId);
+    if (!exam) {
+      return res.status(404).json({ error: 'Exam not found.' });
+    }
+
+    if (req.user.role === 'teacher') {
+      const teacherDept = req.user.department || 'General';
+      if (exam.department && exam.department !== 'General' && exam.department !== teacherDept) {
+        return res.status(403).json({ error: 'You can only re-allow students for exams in your own department.' });
+      }
+    } else if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only administrators and teachers can re-allow students.' });
+    }
+
+    let submission = null;
+    if (getIsConnected()) {
+      submission = await Submission.findOne({
+        $or: [
+          { examId: exam._id, studentId: studentId },
+          { examId: examId, studentId: studentId }
+        ]
+      });
+    } else {
+      submission = memoryDb.submissions.find(s => (
+        (s.examId === examId || String(s.examId) === String(examId) || String(s.examId) === String(exam._id)) &&
+        (s.studentId === studentId || String(s.studentId) === String(studentId))
+      ));
+    }
+
+    if (!submission) {
+      return res.status(404).json({ error: 'No active or terminated attempt found for this student.' });
+    }
+
+    // Reset termination flags to allow clean re-entry
+    submission.isTerminated = false;
+    submission.status = 'pending_evaluation';
+    submission.terminationReason = '';
+    submission.reallowedBy = {
+      adminId: req.user.id || req.user._id,
+      adminName: req.user.name || 'Administrator',
+      adminRole: req.user.role,
+      at: new Date(),
+      reason
+    };
+    submission.reallowedCount = (submission.reallowedCount || 0) + 1;
+
+    if (getIsConnected()) {
+      await submission.save();
+    } else {
+      saveStore();
+    }
+
+    res.json({
+      success: true,
+      message: `Student successfully re-allowed to enter exam "${exam.title}".`,
+      submission
+    });
+  } catch (err) {
+    console.error('Error re-allowing student:', err);
+    res.status(500).json({ error: 'Failed to re-allow student.' });
+  }
+});
+
 // @route   POST /api/submissions/:examId/submit-answers
 // @desc    Submit interactive online exam answers, perform instant auto-grading, and record score
 router.post('/:examId/submit-answers', verifyToken, isStudent, async (req, res) => {

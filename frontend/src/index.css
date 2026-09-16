@@ -439,6 +439,114 @@ a:hover {
   }
 }
 
+/* Webcam Picture-in-Picture Floating Widget */
+.webcam-pip-box {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 170px;
+  background: #090d16;
+  border: 1.5px solid rgba(56, 189, 248, 0.4);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  z-index: 999;
+  transition: all 0.3s ease;
+}
+
+.webcam-pip-box.minimized {
+  width: 140px;
+}
+
+.webcam-pip-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(15, 23, 42, 0.95);
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.live-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f43f5e;
+  display: inline-block;
+  animation: pulseGlow 1.5s infinite ease-in-out;
+}
+
+/* Mobile Question Palette Drawer */
+.palette-mobile-trigger {
+  display: none !important;
+}
+
+.mobile-only {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .palette-mobile-trigger {
+    display: inline-flex !important;
+  }
+
+  .mobile-only {
+    display: inline-flex !important;
+  }
+
+  .exam-sidebar {
+    display: none;
+  }
+
+  .exam-sidebar.mobile-drawer-open {
+    display: block !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(9, 13, 22, 0.95);
+    backdrop-filter: blur(10px);
+    z-index: 1050;
+    padding: 2rem 1rem;
+    overflow-y: auto;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .webcam-pip-box {
+    width: 130px;
+    bottom: 15px;
+    right: 15px;
+  }
+}
+
+/* Mobile Landscape Orientation Optimization */
+@media (orientation: landscape) and (max-height: 520px) {
+  .container {
+    padding: 0.5rem 0.75rem !important;
+  }
+
+  .glass-card {
+    padding: 0.85rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .navbar {
+    padding: 0.35rem 0.75rem !important;
+  }
+
+  .webcam-pip-box {
+    width: 115px;
+    bottom: 8px;
+    right: 8px;
+  }
+
+  .exam-room-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+}
+
 /* Print optimization styles for institutional reports and marksheets */
 .print-only {
   display: none;

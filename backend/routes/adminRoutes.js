@@ -687,6 +687,150 @@ router.get('/reports/department-results', async (req, res) => {
   }
 });
 
+// @route   PUT /api/admin/submissions/:id/re-allow
+// @desc    Admin unlocks and re-allows a terminated student attempt
+router.put('/submissions/:id/re-allow', async (req, res) => {
+  try {
+    const subId = req.params.id;
+    const { reason = 'Authorized by administrator after accidental minimization / disconnection' } = req.body;
+
+    let submission = null;
+    if (getIsConnected()) {
+      if (mongoose.Types.ObjectId.isValid(subId)) {
+        submission = await Submission.findById(subId);
+      }
+      if (!submission) {
+        submission = await Submission.findOne({ $or: [{ id: subId }, { _id: subId }] });
+      }
+    } else {
+      submission = memoryDb.submissions.find(s => String(s._id) === String(subId) || String(s.id) === String(subId));
+    }
+
+    if (!submission) {
+      return res.status(404).json({ error: 'Submission record not found.' });
+    }
+
+    submission.isTerminated = false;
+    submission.status = 'pending_evaluation';
+    submission.terminationReason = '';
+    submission.reallowedBy = {
+      adminId: req.user.id || req.user._id,
+      adminName: req.user.name || 'Institution Administrator',
+      adminRole: 'admin',
+      at: new Date(),
+      reason
+    };
+    submission.reallowedCount = (submission.reallowedCount || 0) + 1;
+
+    if (getIsConnected()) {
+      await submission.save();
+    } else {
+      saveStore();
+    }
+
+    return res.json({
+      success: true,
+      message: `Student "${submission.studentName}" has been successfully re-allowed to take the exam.`,
+      submission
+    });
+  } catch (err) {
+    console.error('Error re-allowing student by admin:', err);
+    res.status(500).json({ error: 'Failed to re-allow student attempt.' });
+  }
+});
+
+// @route   GET /api/admin/analytics/charts-data
+// @desc    Aggregated analytics for score distribution, pass/fail ratios, and department comparisons
+router.get('/analytics/charts-data', async (req, res) => {
+  try {
+    const Exam = require('../models/Exam');
+    let allSubs = [];
+    let allExams = [];
+
+    if (getIsConnected()) {
+      allSubs = await Submission.find().lean();
+      allExams = await Exam.find().lean();
+    } else {
+      allSubs = memoryDb.submissions;
+      allExams = memoryDb.exams;
+    }
+
+    // 1. Score Distribution (0-20, 21-40, 41-60, 61-80, 81-100)
+    const scoreBuckets = {
+      '0-20%': 0,
+      '21-40%': 0,
+      '41-60%': 0,
+      '61-80%': 0,
+      '81-100%': 0
+    };
+
+    let totalPassed = 0;
+    let totalFailed = 0;
+    let totalTerminated = 0;
+
+    allSubs.forEach(s => {
+      if (s.isTerminated || s.status === 'terminated') {
+        totalTerminated++;
+        return;
+      }
+      const pct = Number(s.percentage) || 0;
+      if (pct >= 40 || s.passed) totalPassed++;
+      else totalFailed++;
+
+      if (pct <= 20) scoreBuckets['0-20%']++;
+      else if (pct <= 40) scoreBuckets['21-40%']++;
+      else if (pct <= 60) scoreBuckets['41-60%']++;
+      else if (pct <= 80) scoreBuckets['61-80%']++;
+      else scoreBuckets['81-100%']++;
+    });
+
+    // 2. Department comparison
+    const deptMap = {};
+    allSubs.forEach(s => {
+      const dept = s.studentDepartment || 'General';
+      if (!deptMap[dept]) {
+        deptMap[dept] = { total: 0, sumPct: 0, passed: 0 };
+      }
+      deptMap[dept].total++;
+      if (s.isTerminated || s.status === 'terminated') {
+        // Disqualified
+      } else {
+        const pct = Number(s.percentage) || 0;
+        deptMap[dept].sumPct += pct;
+        if (pct >= 40 || s.passed) deptMap[dept].passed++;
+      }
+    });
+
+    const departmentComparison = Object.keys(deptMap).map(dept => {
+      const d = deptMap[dept];
+      const avg = d.total > 0 ? Math.round((d.sumPct / d.total) * 10) / 10 : 0;
+      const rate = d.total > 0 ? Math.round((d.passed / d.total) * 100) : 0;
+      return {
+        department: dept,
+        totalCandidates: d.total,
+        averageScore: avg,
+        passRate: rate
+      };
+    });
+
+    res.json({
+      scoreDistribution: scoreBuckets,
+      passFailRatio: {
+        passed: totalPassed,
+        failed: totalFailed,
+        terminated: totalTerminated
+      },
+      departmentComparison,
+      totalSubmissions: allSubs.length,
+      totalExams: allExams.length
+    });
+  } catch (err) {
+    console.error('Error generating chart analytics:', err);
+    res.status(500).json({ error: 'Failed to generate analytics charts data.' });
+  }
+});
+
 module.exports = router;
+
 
 

@@ -112,7 +112,10 @@ async function run() {
     name: 'AntiCheat Candidate',
     email: studentEmail,
     password: 'password123',
-    role: 'student'
+    role: 'student',
+    department: 'Computer Science & Engineering',
+    course: 'B.Tech',
+    semester: 'Semester 4'
   });
 
   const studentToken = regRes.data.token;

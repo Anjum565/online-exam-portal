@@ -433,11 +433,13 @@ router.get('/:id', verifyToken, async (req, res) => {
           });
         }
 
-        // Student already officially submitted
-        examObj.questions = [];
-        examObj.hasSubmitted = true;
-        examObj.submissionStatus = existingSub.status || 'submitted';
-        return res.json(examObj);
+        // Only mark as already submitted if officially submitted or graded (not when re-allowed / in-progress)
+        if (existingSub.status === 'submitted' || existingSub.status === 'graded') {
+          examObj.questions = [];
+          examObj.hasSubmitted = true;
+          examObj.submissionStatus = existingSub.status;
+          return res.json(examObj);
+        }
       }
 
       const pool = examObj.questions || [];

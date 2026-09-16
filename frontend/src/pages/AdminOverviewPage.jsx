@@ -5,8 +5,9 @@ import axios from 'axios';
 import {
   Shield, Users, BookOpen, Building, CheckCircle, Clock,
   Eye, Filter, RefreshCw, Award, AlertTriangle, Check, X, Search, FileText, Trash2,
-  Download, Printer, Table
+  Download, Printer, Table, Camera, BarChart3, PieChart, TrendingUp, UserCheck
 } from 'lucide-react';
+import { ScoreDistributionChart, PassFailDonutChart, DepartmentComparisonChart } from '../components/AnalyticsCharts';
 
 export default function AdminOverviewPage({ defaultTab = 'exams' }) {
   const [activeTab, setActiveTab] = useState(defaultTab); // 'exams' | 'teachers' | 'students' | 'results'
@@ -30,6 +31,12 @@ export default function AdminOverviewPage({ defaultTab = 'exams' }) {
   const [reportSubject, setReportSubject] = useState('ALL');
   const [reportSearch, setReportSearch] = useState('');
   const [reportLoading, setReportLoading] = useState(false);
+
+  // Visual Analytics Charts Data
+  const [chartsData, setChartsData] = useState(null);
+
+  // Proctoring Snapshot Modal State
+  const [selectedSnapshotSub, setSelectedSnapshotSub] = useState(null);
 
   const { API_BASE_URL } = useContext(AuthContext);
 
@@ -81,11 +88,38 @@ export default function AdminOverviewPage({ defaultTab = 'exams' }) {
     loadData();
   }, []);
 
+  const fetchChartsData = async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/admin/analytics/charts-data`);
+      setChartsData(res.data);
+    } catch (e) {
+      console.warn('Failed to load charts data:', e.message);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'results') {
       fetchDepartmentResults();
+      fetchChartsData();
     }
   }, [activeTab, reportDept, reportCourse, reportSemester, reportSubject]);
+
+  const handleReallowStudent = async (subId, studentName) => {
+    if (!window.confirm(`Re-allow "${studentName}" to re-enter this examination? Their disqualified status will be lifted immediately.`)) return;
+    setActionLoading(true);
+    try {
+      await axios.put(`${API_BASE_URL}/admin/submissions/${subId}/re-allow`, {
+        reason: 'Authorized by institution administrator after accidental minimization'
+      });
+      alert(`Candidate "${studentName}" has been successfully unlocked and authorized to re-enter!`);
+      fetchDepartmentResults();
+      fetchChartsData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to re-allow student attempt.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleVerifyStudent = async (studentId, status) => {
     setActionLoading(true);
@@ -838,6 +872,17 @@ export default function AdminOverviewPage({ defaultTab = 'exams' }) {
               </div>
             </div>
 
+            {/* Visual Performance Analytics Charts */}
+            {chartsData && (
+              <div style={{ marginBottom: '1.75rem' }} className="no-print">
+                <div className="grid-2" style={{ marginBottom: '1.25rem' }}>
+                  <ScoreDistributionChart data={chartsData.scoreDistribution} />
+                  <PassFailDonutChart passFail={chartsData.passFailRatio} />
+                </div>
+                <DepartmentComparisonChart departments={chartsData.departmentComparison} />
+              </div>
+            )}
+
             {/* Filter Controls Grid */}
             <div style={{
               display: 'grid',
@@ -1065,15 +1110,47 @@ export default function AdminOverviewPage({ defaultTab = 'exams' }) {
                         </td>
 
                         {/* Action Buttons (Hidden on Print) */}
-                        <td className="no-print" style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
-                          <Link
-                            to={`/teacher/grading/${sub.examId}`}
-                            className="btn btn-secondary"
-                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
-                            title="Audit individual answers and remarks"
-                          >
-                            <Eye size={13} /> View Audit
-                          </Link>
+                        <td className="no-print" style={{ padding: '0.85rem 1rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
+                            <Link
+                              to={`/teacher/grading/${sub.examId}`}
+                              className="btn btn-secondary"
+                              style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                              title="Audit individual answers and remarks"
+                            >
+                              <Eye size={13} /> Audit
+                            </Link>
+
+                            {isTerminated && (
+                              <button
+                                onClick={() => handleReallowStudent(sub._id || sub.id, sub.studentName)}
+                                className="btn btn-primary"
+                                style={{
+                                  padding: '0.35rem 0.65rem',
+                                  fontSize: '0.75rem',
+                                  background: 'var(--amber)',
+                                  borderColor: 'var(--amber)',
+                                  color: '#000000',
+                                  fontWeight: '700'
+                                }}
+                                title="Re-allow candidate who was mistakenly minimized or disconnected"
+                                disabled={actionLoading}
+                              >
+                                <RefreshCw size={13} /> Re-allow
+                              </button>
+                            )}
+
+                            {sub.proctoringSnapshots && sub.proctoringSnapshots.length > 0 && (
+                              <button
+                                onClick={() => setSelectedSnapshotSub(sub)}
+                                className="btn btn-secondary"
+                                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}
+                                title="View webcam snapshots captured during examination"
+                              >
+                                <Camera size={13} /> {sub.proctoringSnapshots.length} Snaps
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1081,6 +1158,71 @@ export default function AdminOverviewPage({ defaultTab = 'exams' }) {
                 </tbody>
               </table>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Proctoring Snapshots Modal */}
+      {selectedSnapshotSub && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog" style={{ maxWidth: '780px', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ffffff' }}>
+                  <Camera size={18} color="var(--primary)" /> Proctoring Snapshot Audit
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.2rem 0 0 0' }}>
+                  Candidate: <strong>{selectedSnapshotSub.studentName}</strong> &bull; Exam: {selectedSnapshotSub.examTitle || 'Test'}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedSnapshotSub(null)}
+                className="btn btn-secondary"
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '1rem',
+              marginBottom: '1.5rem'
+            }}>
+              {(selectedSnapshotSub.proctoringSnapshots || []).map((snap, sIdx) => (
+                <div key={sIdx} style={{
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  borderRadius: '10px',
+                  overflow: 'hidden',
+                  border: `1px solid ${snap.trigger === 'violation' ? 'var(--rose)' : 'var(--border-light)'}`
+                }}>
+                  <img
+                    src={snap.image}
+                    alt={`Snapshot ${sIdx + 1}`}
+                    style={{ width: '100%', height: '150px', objectFit: 'cover', display: 'block', background: '#000' }}
+                  />
+                  <div style={{ padding: '0.6rem 0.75rem', fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.8)' }}>
+                    <span style={{
+                      fontWeight: '700',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      color: snap.trigger === 'violation' ? 'var(--rose)' : (snap.trigger === 'initial' ? 'var(--primary)' : '#34d399')
+                    }}>
+                      {snap.trigger || 'Periodic'}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      {new Date(snap.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setSelectedSnapshotSub(null)} className="btn btn-primary" style={{ padding: '0.5rem 1.5rem' }}>
+                Close Audit
+              </button>
+            </div>
           </div>
         </div>
       )}

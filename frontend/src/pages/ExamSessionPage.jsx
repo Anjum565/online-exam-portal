@@ -4,7 +4,8 @@ import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import {
   Clock, CheckCircle, AlertTriangle, HelpCircle, ArrowRight, ArrowLeft,
-  Bookmark, Flag, Award, RefreshCw, Eye, ShieldAlert, Check, X, LogOut, Terminal, Code
+  Bookmark, Flag, Award, RefreshCw, Eye, ShieldAlert, Check, X, LogOut, Terminal, Code,
+  Camera, Video, VideoOff, Layers, UserCheck, ChevronUp, ChevronDown
 } from 'lucide-react';
 import CodeBlock from '../components/CodeBlock';
 import CodeEditor from '../components/CodeEditor';
@@ -17,7 +18,7 @@ export default function ExamSessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Exam phase: 'instructions' | 'in_progress' | 'submitted'
+  // Exam phase: 'instructions' | 'in_progress' | 'submitted' | 'terminated'
   const [examPhase, setExamPhase] = useState('instructions');
 
   // Test state
@@ -27,6 +28,16 @@ export default function ExamSessionPage() {
   const [codeLanguages, setCodeLanguages] = useState({}); // { [questionIndex]: languageString }
   const [markedMap, setMarkedMap] = useState({}); // { [questionIndex]: boolean }
   const [visitedMap, setVisitedMap] = useState({ 0: true });
+
+  // Mobile drawer palette & responsiveness
+  const [showMobilePalette, setShowMobilePalette] = useState(false);
+
+  // Webcam Proctoring
+  const [webcamActive, setWebcamActive] = useState(false);
+  const [webcamReady, setWebcamReady] = useState(false);
+  const [isWebcamMinimized, setIsWebcamMinimized] = useState(false);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
 
   // Timer & proctoring
   const [secondsRemaining, setSecondsRemaining] = useState(0);
@@ -51,17 +62,9 @@ export default function ExamSessionPage() {
     return seed;
   };
 
-  // Load exam details and check if student already submitted or was terminated
+  // Load exam details and synchronize server termination status
   useEffect(() => {
     const fetchExam = async () => {
-      // Check if student was previously terminated locally
-      if (localStorage.getItem(`exam_terminated_${examId}`) === 'true') {
-        setExamPhase('terminated');
-        setTerminationReason('Exam attempt was terminated because the browser was closed or navigated away. Re-entry is barred.');
-        setLoading(false);
-        return;
-      }
-
       try {
         const examRes = await axios.get(`${API_BASE_URL}/exams/${examId}`, {
           headers: {
@@ -69,6 +72,9 @@ export default function ExamSessionPage() {
           }
         });
         setExam(examRes.data);
+
+        // Server allowed entry! Clear any stale local termination flag (e.g. after admin re-allow)
+        localStorage.removeItem(`exam_terminated_${examId}`);
 
         // Check if student already submitted or was terminated on backend
         try {
@@ -78,7 +84,7 @@ export default function ExamSessionPage() {
             if (subRes.data.isTerminated || subRes.data.status === 'terminated') {
               setExamPhase('terminated');
               setTerminationReason(subRes.data.terminationReason || 'Exam attempt was terminated because the browser was closed or navigated back.');
-            } else {
+            } else if (subRes.data.status === 'submitted' || subRes.data.status === 'graded') {
               setExamPhase('submitted');
             }
           }
@@ -88,7 +94,7 @@ export default function ExamSessionPage() {
       } catch (err) {
         if (err.response?.data?.isTerminated) {
           setExamPhase('terminated');
-          setTerminationReason(err.response.data.terminationReason || err.response.data.error);
+          setTerminationReason(err.response.data.terminationReason || err.response.data.error || 'Exam attempt was terminated.');
         } else {
           setError(err.response?.data?.error || 'Failed to load exam session.');
         }
@@ -98,7 +104,7 @@ export default function ExamSessionPage() {
     };
 
     fetchExam();
-  }, [examId]);
+  }, [examId, API_BASE_URL]);
 
   // Trap and prevent browser Back button during active examination
   useEffect(() => {
@@ -219,6 +225,76 @@ export default function ExamSessionPage() {
     return () => clearInterval(timer);
   }, [examPhase, secondsRemaining]);
 
+  // Start webcam feed for live proctoring
+  const startWebcam = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' },
+        audio: false
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+      setWebcamActive(true);
+      setWebcamReady(true);
+    } catch (err) {
+      console.warn('Webcam not available or permission denied:', err.message);
+    }
+  };
+
+  // Capture canvas snapshot and upload to backend
+  const captureAndUploadSnapshot = async (trigger = 'periodic') => {
+    if (!videoRef.current || !streamRef.current) return;
+    try {
+      const video = videoRef.current;
+      if (video.videoWidth === 0 || video.videoHeight === 0) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = 240;
+      canvas.height = 180;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, 240, 180);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.45);
+      await axios.post(`${API_BASE_URL}/submissions/${examId}/snapshot`, {
+        image: dataUrl,
+        trigger
+      });
+    } catch (err) {
+      // Non-blocking background capture
+    }
+  };
+
+  // Periodic snapshot interval during active exam
+  useEffect(() => {
+    if (examPhase !== 'in_progress' || !webcamActive) return;
+
+    // Capture first snapshot 4s after start
+    const initialTimer = setTimeout(() => {
+      captureAndUploadSnapshot('initial');
+    }, 4000);
+
+    // Periodic capture every 75 seconds
+    const interval = setInterval(() => {
+      captureAndUploadSnapshot('periodic');
+    }, 75000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
+  }, [examPhase, webcamActive]);
+
+  // Clean up webcam media stream on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
   const handleStartExam = () => {
     if (!exam || !exam.questions || exam.questions.length === 0) {
       alert('This exam currently has no questions configured.');
@@ -231,7 +307,10 @@ export default function ExamSessionPage() {
     setExamPhase('in_progress');
     setVisitedMap({ 0: true });
 
-    // Try requesting fullscreen for distraction-free exam mode
+    // Request webcam proctoring
+    startWebcam();
+
+    // Try requesting fullscreen safely for distraction-free exam mode
     try {
       if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen().catch(() => {});
@@ -339,6 +418,15 @@ export default function ExamSessionPage() {
       // Clear attempt seed on successful completion
       localStorage.removeItem(`exam_attempt_seed_${examId}`);
 
+      // Capture final proctoring snapshot and stop stream
+      try {
+        await captureAndUploadSnapshot('final');
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+        }
+        setWebcamActive(false);
+      } catch (e) {}
+
       // Exit fullscreen if active
       try {
         if (document.fullscreenElement && document.exitFullscreen) {
@@ -407,12 +495,6 @@ export default function ExamSessionPage() {
     );
   }
 
-  const questions = exam.questions || [];
-  const currentQ = questions[currentIndex];
-  const answeredCount = Object.keys(answersMap).length;
-  const markedCount = Object.keys(markedMap).filter(k => markedMap[k]).length;
-  const unattemptedCount = questions.length - answeredCount;
-
   // ==========================================
   // PHASE: TERMINATED & DISQUALIFIED
   // ==========================================
@@ -432,11 +514,11 @@ export default function ExamSessionPage() {
           </div>
 
           <h2 style={{ fontSize: '1.85rem', fontWeight: '800', color: 'var(--rose)', marginBottom: '0.5rem' }}>
-            Exam Session Terminated
+            Exam Session Locked / Terminated
           </h2>
 
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '1.5rem' }}>
-            Re-entry or giving this examination is blocked.
+            Re-entry was barred due to anti-cheat window minimization or navigation safeguards.
           </p>
 
           <div style={{
@@ -456,26 +538,59 @@ export default function ExamSessionPage() {
           </div>
 
           <div style={{
-            background: 'rgba(0,0,0,0.3)',
-            padding: '1rem',
+            background: 'rgba(56, 189, 248, 0.08)',
+            padding: '1.1rem 1.25rem',
             borderRadius: '10px',
-            border: '1px solid var(--border-light)',
-            fontSize: '0.82rem',
-            color: 'var(--text-muted)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
+            fontSize: '0.85rem',
+            color: '#e2e8f0',
             lineHeight: '1.6',
             marginBottom: '2rem',
             textAlign: 'left'
           }}>
-            🔒 <strong>Strict Security Policy:</strong> In accordance with examination regulations, navigating away, pressing Back, or closing the browser window during an active test forfeits the attempt. Multiple attempts are strictly prohibited. Contact your examiner or instructor if you believe this was an error.
+            <div style={{ fontWeight: '700', color: '#38bdf8', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <UserCheck size={16} /> Mistaken Minimization or Disconnection?
+            </div>
+            If you accidentally minimized the browser, switched apps, or lost connection, <strong>your examiner or administrator can re-allow your attempt</strong> from their dashboard. Once authorized, click <strong>"Check Clearance & Resume"</strong> below to enter back in without losing progress.
           </div>
 
-          <Link to="/student/dashboard" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.8rem 2rem' }}>
-            <ArrowLeft size={16} /> Back to Student Dashboard
-          </Link>
+          <div style={{ display: 'flex', gap: '0.85rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => window.location.reload()}
+              className="btn btn-primary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.8rem 1.5rem' }}>
+              <RefreshCw size={16} /> Check Clearance & Resume
+            </button>
+            <Link
+              to="/student/dashboard"
+              className="btn btn-secondary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.8rem 1.5rem' }}>
+              <ArrowLeft size={16} /> Return to Dashboard
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
+
+  if (!exam) {
+    return (
+      <div className="container" style={{ padding: '5rem 1rem', textAlign: 'center' }}>
+        <div className="glass-card" style={{ maxWidth: '500px', margin: '0 auto' }}>
+          <AlertTriangle size={48} color="var(--rose)" style={{ marginBottom: '1rem' }} />
+          <h3>Exam Unavailable</h3>
+          <p style={{ color: 'var(--text-muted)', margin: '1rem 0' }}>{error || 'Unable to retrieve exam details.'}</p>
+          <Link to="/student/dashboard" className="btn btn-primary">Back to Dashboard</Link>
+        </div>
+      </div>
+    );
+  }
+
+  const questions = exam.questions || [];
+  const currentQ = questions[currentIndex] || null;
+  const answeredCount = Object.keys(answersMap).length;
+  const markedCount = Object.keys(markedMap).filter(k => markedMap[k]).length;
+  const unattemptedCount = Math.max(questions.length - answeredCount, 0);
 
   // ==========================================
   // PHASE 1: PRE-EXAM INSTRUCTIONS
@@ -693,11 +808,57 @@ export default function ExamSessionPage() {
               <span>{formatTime(secondsRemaining)}</span>
             </div>
 
+            <button
+              type="button"
+              onClick={() => setShowMobilePalette(!showMobilePalette)}
+              className="btn btn-secondary palette-mobile-trigger">
+              <Layers size={16} /> Palette ({currentIndex + 1}/{questions.length})
+            </button>
+
             <button onClick={() => setShowConfirmModal(true)} className="btn btn-success" disabled={submitting}>
               <CheckCircle size={18} /> Submit Exam
             </button>
           </div>
         </div>
+
+        {/* Floating Live Webcam Proctoring Picture-in-Picture Box */}
+        {webcamActive && (
+          <div className={`webcam-pip-box ${isWebcamMinimized ? 'minimized' : ''}`}>
+            <div className="webcam-pip-bar">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.72rem', fontWeight: '700', color: '#f43f5e' }}>
+                <span className="live-pulse-dot" /> REC PROCTORING
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWebcamMinimized(!isWebcamMinimized)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '2px 4px'
+                }}>
+                {isWebcamMinimized ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            </div>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                width: '100%',
+                height: isWebcamMinimized ? '0px' : '115px',
+                objectFit: 'cover',
+                display: isWebcamMinimized ? 'none' : 'block',
+                background: '#090d16'
+              }}
+            />
+          </div>
+        )}
 
         {/* Main Test Body: Question Card + Palette */}
         <div className="exam-room-grid">
@@ -909,10 +1070,21 @@ export default function ExamSessionPage() {
           </div>
 
           {/* Right Sidebar: Status & Question Palette */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className={`exam-sidebar ${showMobilePalette ? 'mobile-drawer-open' : ''}`}>
             {/* Status Legend */}
             <div className="glass-card fade-in" style={{ padding: '1.25rem' }}>
-              <h4 style={{ fontSize: '0.95rem', marginBottom: '1rem', fontWeight: '700' }}>Question Palette</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h4 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '700' }}>Question Palette</h4>
+                {showMobilePalette && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMobilePalette(false)}
+                    className="btn btn-secondary mobile-only"
+                    style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}>
+                    <X size={14} /> Close
+                  </button>
+                )}
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -950,7 +1122,10 @@ export default function ExamSessionPage() {
                     <div
                       key={idx}
                       className={`palette-chip ${chipClass} ${isCurrent ? 'current' : ''}`}
-                      onClick={() => handleJumpToQuestion(idx)}>
+                      onClick={() => {
+                        handleJumpToQuestion(idx);
+                        setShowMobilePalette(false);
+                      }}>
                       {idx + 1}
                     </div>
                   );

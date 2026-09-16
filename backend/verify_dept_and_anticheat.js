@@ -75,6 +75,28 @@ async function runTests() {
     const teacherBToken = teacherBRes.data.token;
     console.log('✓ Teacher B registered in Mechanical Engineering with subjects: Thermodynamics');
 
+    // Admin verifies Teacher A, Teacher B, and Student
+    const adminLogin = await req('/auth/login', {
+      method: 'POST',
+      body: { email: 'admin@test.com', password: 'password123' }
+    });
+    if (!adminLogin.ok) throw new Error('Admin login failed: ' + JSON.stringify(adminLogin.data));
+    const initialAdminToken = adminLogin.data.token;
+
+    await req(`/admin/teachers/${teacherARes.data.user.id}/verify`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${initialAdminToken}` }
+    });
+    await req(`/admin/teachers/${teacherBRes.data.user.id}/verify`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${initialAdminToken}` }
+    });
+    await req(`/admin/students/${studentRes.data.user.id}/verify`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${initialAdminToken}` }
+    });
+    console.log('✓ Admin approved Teacher A, Teacher B, and CS Student');
+
     // 4. Teacher A creates an exam for CS
     console.log('\n4. Teacher A creates CS Exam...');
     const now = new Date();

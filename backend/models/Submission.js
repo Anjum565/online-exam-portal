@@ -134,6 +134,24 @@ const submissionSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Webcam & Proctoring Snapshot Audit Log
+  proctoringSnapshots: [{
+    timestamp: { type: Date, default: Date.now },
+    image: { type: String, default: '' },
+    trigger: { type: String, default: 'periodic' } // 'initial', 'periodic', 'violation', 'final'
+  }],
+  // Admin / Faculty Re-allow Audit Metadata
+  reallowedBy: {
+    adminId: { type: String, default: '' },
+    adminName: { type: String, default: '' },
+    adminRole: { type: String, default: '' },
+    at: { type: Date, default: null },
+    reason: { type: String, default: '' }
+  },
+  reallowedCount: {
+    type: Number,
+    default: 0
+  },
   // Scanned physical paper fallback fields
   scriptUrl: {
     type: String,
