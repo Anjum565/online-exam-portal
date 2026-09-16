@@ -61,9 +61,12 @@ async function run50QuestionTest() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Alex Johnson',
-        email: 'alex.student@test.com',
+        email: `alex.${Date.now()}@test.com`,
         password: 'password123',
-        role: 'student'
+        role: 'student',
+        department: 'Computer Science & Engineering',
+        course: 'B.Tech',
+        semester: 'Semester 4'
       })
     });
     const sRegData = await sRegRes.json();

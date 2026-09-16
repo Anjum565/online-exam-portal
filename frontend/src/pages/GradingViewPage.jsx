@@ -629,11 +629,24 @@ export default function GradingViewPage() {
                         Roll No: <strong>{selectedSub.studentRollNumber || 'N/A'}</strong> &bull; Completed in {selectedSub.timeSpentSeconds ? Math.round(selectedSub.timeSpentSeconds / 60) : 0} mins &bull; {selectedSub.correctCount || 0}/{selectedSub.totalQuestions || exam.questions?.length || 0} Correct
                       </span>
                     </div>
-                    {selectedSub.tabSwitchCount > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--rose)', fontSize: '0.8rem', background: 'rgba(244, 63, 94, 0.1)', padding: '0.35rem 0.65rem', borderRadius: '6px' }}>
-                        <ShieldAlert size={14} /> {selectedSub.tabSwitchCount} Focus Violations
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {selectedSub.tabSwitchCount > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--rose)', fontSize: '0.8rem', background: 'rgba(244, 63, 94, 0.1)', padding: '0.35rem 0.65rem', borderRadius: '6px' }}>
+                          <ShieldAlert size={14} /> {selectedSub.tabSwitchCount} Focus Violations
+                        </div>
+                      )}
+                      {selectedSub.proctoringSnapshots && selectedSub.proctoringSnapshots.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSnapshotSub(selectedSub)}
+                          className="btn btn-secondary"
+                          style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}
+                          title="View webcam proctoring snapshots"
+                        >
+                          <Camera size={13} /> {selectedSub.proctoringSnapshots.length} Snapshots
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
